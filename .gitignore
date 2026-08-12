@@ -1,0 +1,12 @@
+.venv/
+.cache/
+config.json
+jobs.json
+.test-vault/
+__pycache__/
+*.pyc
+tests/*.log
+tests/*.wav
+tests/real-asr-result.json
+service.stdout.log
+service.stderr.log

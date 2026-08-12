@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Tongji Course Clipper",
+  "version": "0.2.0",
+  "description": "一键把同济课程回放转写为 Obsidian Markdown。",
+  "permissions": ["activeTab", "scripting", "notifications", "storage", "alarms"],
+  "host_permissions": [
+    "https://look.tongji.edu.cn/*",
+    "http://127.0.0.1:8765/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "128": "icon-128.png"
+  },
+  "action": {
+    "default_title": "剪藏当前同济课程",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "128": "icon-128.png"
+    }
+  }
+}

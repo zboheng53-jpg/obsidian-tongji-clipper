@@ -1,0 +1,10 @@
+{
+  "vault_dir": "C:\\Path\\To\\Your\\ObsidianVault",
+  "notes_subdir": "课程笔记",
+  "model": "small",
+  "language": "zh",
+  "host": "127.0.0.1",
+  "port": 8765,
+  "keep_temporary_media": false,
+  "model_cache_dir": ".cache/models"
+}
