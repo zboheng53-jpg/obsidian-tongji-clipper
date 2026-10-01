@@ -1,10 +1,12 @@
-# 离线转写方案调研（经主代理复核）
+# 离线转写方案调研
 
-日期：2026-10-01。AGY 员工完成初步资料研究，主代理核对关键官方资料并重写过强结论。本文件是最终采用版本；员工原始回执留在 `.agy-staff/jobs/`，不作为已验证结论。
+调研日期：2026-10-01。本文记录方案候选、官方资料和待实测问题；当前实现及验收以 [README](../README.md) 为准。
 
 ## 结论与证据边界
 
-推荐第一轮原型用 Python + faster-whisper，理由是现成的段级时间戳、VAD 和 CPU int8 路径便于建立可测基线，不是它已被证明识别最准确。同时将 sherpa-onnx / SenseVoice 列为 CPU 候选，whisper.cpp 列为原生分发候选。三者均未在本机课程音频上进行 ASR 对比，不能给出速度、字错率或最优排名。
+本报告记录 2026-10-01 的选型调研，不是现役功能清单。随后项目采用 Python + faster-whisper，并实现了任务中心、资源设置、Native Messaging 桥接、通知和 `#clip-t=` 时间跳转；当前验收状态见 [README](../README.md)。
+
+当时推荐第一轮原型用 Python + faster-whisper，理由是现成的段级时间戳、VAD 和 CPU int8 路径便于建立可测基线，不是它已被证明识别最准确。同时将 sherpa-onnx / SenseVoice 列为 CPU 候选，whisper.cpp 列为原生分发候选。三者均未在本机课程音频上进行 ASR 对比，不能给出速度、字错率或最优排名。
 
 本轮网站实测和 FFmpeg 音频提取已经完成，见 `discovery-and-technical-plan.md`。下载课程需要网络；模型与依赖就绪后，识别和排版可以在本地运行。合适的承诺是“课程音频与逐字稿不上传云端识别服务”，不能承诺全流程绝对离线或零泄露风险。
 
@@ -42,15 +44,15 @@ Native Messaging 是推荐的正式集成候选：无需网页直接请求 local
 
 脚本桥接响应时须注意 isolated world 与 MAIN world 的区别；建议仅匹配目标接口，提取必要元数据和有效媒体地址，不复制整份请求头、Cookie 或用户信息。[Chrome 官方 content scripts 文档](https://developer.chrome.com/docs/extensions/develop/concepts/content-scripts)
 
-## 需求修正与分期
+## 调研阶段提出的需求分期（非当前待办）
 
 MVP：单节当前回放、媒体取音、串行持久队列、原始逐字稿、段级时间戳、Markdown/SRT/JSON、明确目录、失败可重试、成功后清理本任务临时媒体。
 
-延期：批量课程、自动感知 Obsidian Vault、词级对齐、术语词典、桌面通知、原生安装器、跨源 HLS、板书或 PPT OCR。
+延期：批量课程、自动感知 Obsidian Vault、词级对齐、术语词典、原生安装器、跨源 HLS、板书或 PPT OCR。桌面通知和 Native Messaging 桥接已在后续实现，不再列为延期项。
 
-普通跨域 iframe：主代理测得课程网页 `X-Frame-Options: SAMEORIGIN`，不能作为默认交付承诺。保留稳定课程页链接，后续由本工具扩展识别时间 hash 并执行 seek；删除本地视频和在线时间戳回看并不逻辑冲突，但源站原生时间参数尚未验证。
+普通跨域 iframe：调研时测得课程网页 `X-Frame-Options: SAMEORIGIN`，不将其作为交付承诺。产品保存稳定课程页链接；扩展按 `#clip-t=` 打开课程时间点，源站是否原生支持该 hash 仍未验证。
 
-## 下一轮应验收的证据
+## 后续仍有价值的验收项
 
 1. 固定真实课堂样本和人工校对稿，在上述候选中测 CER、术语漏错、静音误出字、时间戳偏差、墙钟耗时和峰值内存；保存配置并区分原稿和格式化稿。
 2. 一节完整课程的获取完整性和实际音频末尾覆盖；短样本成功不能替代长任务验收。
