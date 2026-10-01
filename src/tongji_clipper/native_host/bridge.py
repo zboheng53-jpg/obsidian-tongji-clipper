@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
 import subprocess
@@ -18,12 +19,12 @@ from tongji_clipper.native_host.protocol import read_message, send_message
 
 # Bridge logs strictly to stderr or log file, NEVER stdout!
 log_file = get_app_dir() / "bridge.log"
-logging.basicConfig(
-    filename=str(log_file),
-    level=logging.INFO,
-    format="[%(asctime)s] [%(levelname)s] (bridge) %(message)s",
-)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+log_handler = RotatingFileHandler(str(log_file), maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8")
+log_formatter = logging.Formatter("[%(asctime)s] [%(levelname)s] (bridge) %(message)s")
+log_handler.setFormatter(log_formatter)
+logger.addHandler(log_handler)
 
 
 def ping_worker(port: int) -> bool:
@@ -106,6 +107,9 @@ def send_worker_request(
 
 def handle_client_message(msg: Dict[str, Any]) -> Dict[str, Any]:
     """Routes action to worker API endpoints."""
+    if not isinstance(msg, dict):
+        return {"error": "Message must be a JSON object"}
+
     action = msg.get("action", "")
 
     if action == "ping":
@@ -123,15 +127,75 @@ def handle_client_message(msg: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     if action == "list_jobs":
-        return send_worker_request("/jobs", method="GET")
+        params = []
+        if "limit" in msg:
+            params.append(f"limit={msg['limit']}")
+        if "offset" in msg:
+            params.append(f"offset={msg['offset']}")
+        qs = f"?{'&'.join(params)}" if params else ""
+        return send_worker_request(f"/jobs{qs}", method="GET")
 
     if action == "status":
         job_id = msg.get("job_id", "")
         return send_worker_request(f"/jobs/{job_id}", method="GET")
 
+    if action == "system_info":
+        return send_worker_request("/system_info", method="GET")
+
+    if action == "validate_config":
+        return send_worker_request(
+            "/validate_config",
+            method="POST",
+            body={"config": msg.get("config", {})},
+        )
+
+    if action == "open_output":
+        return send_worker_request(
+            "/open_output",
+            method="POST",
+            body={"job_id": msg.get("job_id"), "kind": msg.get("kind", "folder")},
+        )
+
+    if action == "export":
+        return send_worker_request(
+            "/export",
+            method="POST",
+            body={
+                "job_id": msg.get("job_id"),
+                "output_dir": msg.get("output_dir"),
+                "keep_audio": bool(msg.get("keep_audio", False)),
+            },
+        )
+
+    if action == "cleanup_cache":
+        return send_worker_request(
+            "/cleanup_cache",
+            method="POST",
+            body={"job_id": msg.get("job_id")},
+        )
+
+    if action == "preview":
+        return send_worker_request(
+            "/preview",
+            method="POST",
+            body={"job_id": msg.get("job_id"), "max_lines": int(msg.get("max_lines", 50))},
+        )
+
     if action == "cancel":
         job_id = msg.get("job_id", "")
         return send_worker_request("/cancel", method="POST", body={"job_id": job_id})
+
+    if action == "pause":
+        job_id = msg.get("job_id", "")
+        return send_worker_request("/pause", method="POST", body={"job_id": job_id})
+
+    if action == "resume":
+        job_id = msg.get("job_id", "")
+        return send_worker_request("/resume", method="POST", body={"job_id": job_id})
+
+    if action == "retry":
+        job_id = msg.get("job_id", "")
+        return send_worker_request("/retry", method="POST", body={"job_id": job_id})
 
     if action == "refresh_signature":
         job_id = msg.get("job_id", "")
@@ -147,21 +211,33 @@ def handle_client_message(msg: Dict[str, Any]) -> Dict[str, Any]:
 
 def main() -> None:
     logger.info("Native messaging bridge started.")
-    try:
-        while True:
-            msg = read_message()
-            if msg is None:
-                logger.info("Native messaging client closed pipe. Exiting bridge.")
-                break
-
-            response = handle_client_message(msg)
-            send_message(response)
-    except Exception as e:
-        logger.exception("Bridge encountered unexpected error: %s", e)
+    while True:
         try:
-            send_message({"error": f"Bridge error: {e}"})
-        except Exception:
-            pass
+            msg = read_message()
+        except Exception as e:
+            logger.exception("Failed reading message from pipe: %s", e)
+            break
+
+        if msg is None:
+            logger.info("Native messaging client closed pipe. Exiting bridge.")
+            break
+
+        try:
+            response = handle_client_message(msg)
+            if not isinstance(response, dict):
+                response = {"status": "ok", "result": response}
+            if isinstance(msg, dict) and "request_id" in msg:
+                response["request_id"] = msg["request_id"]
+            send_message(response)
+        except Exception as e:
+            logger.exception("Bridge encountered error handling message: %s", e)
+            try:
+                err_resp: Dict[str, Any] = {"error": f"Bridge error: {e}"}
+                if isinstance(msg, dict) and "request_id" in msg:
+                    err_resp["request_id"] = msg["request_id"]
+                send_message(err_resp)
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":

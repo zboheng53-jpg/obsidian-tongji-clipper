@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>同济课程逐字稿 · 任务中心与设置</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <!-- Navigation Header -->
+  <header class="navbar">
+    <div class="navbar-inner">
+      <div class="brand">
+        <div class="brand-icon">T</div>
+        <div>
+          <h1 class="brand-title">同济课程逐字稿<span class="brand-subtitle">任务中心</span></h1>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <nav class="nav-tabs" role="tablist" aria-label="任务中心主导航">
+        <button id="tab-btn-tasks" class="nav-tab-btn active" role="tab" aria-selected="true" aria-controls="pane-tasks" tabindex="0">
+          <span>📋</span> 任务总览与管理
+        </button>
+        <button id="tab-btn-settings" class="nav-tab-btn" role="tab" aria-selected="false" aria-controls="pane-settings" tabindex="-1">
+          <span>⚙️</span> 系统设置与自检
+        </button>
+        <a id="link-preview-demo" href="preview.html" class="nav-tab-btn" target="_blank" title="打开隔离离线演示验收页面">
+          <span>🧪</span> 离线演示验收 ↗
+        </a>
+      </nav>
+
+      <!-- Worker Status & Actions -->
+      <div class="nav-meta">
+        <span id="worker-badge" class="badge badge-waiting" aria-live="polite">后台服务检测中</span>
+        <button id="btn-refresh-manual" class="btn btn-secondary" title="刷新任务状态与后台服务连通性">
+          刷新 ↻
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-container">
+    <!-- Tab 1: Tasks Overview and Management -->
+    <section id="pane-tasks" class="tab-panel active" role="tabpanel" aria-labelledby="tab-btn-tasks" tabindex="0">
+      <!-- KPI Stats Grid -->
+      <div class="stats-grid" role="region" aria-label="任务统计概览">
+        <div class="stat-card" data-filter="running" tabindex="0" role="button" aria-label="筛选正在处理的任务">
+          <div class="stat-card-title">正在处理 <span>⚡</span></div>
+          <div id="stat-running-count" class="stat-card-value">0</div>
+          <div class="stat-card-desc">音频提取与本地转写中</div>
+        </div>
+        <div class="stat-card" data-filter="queued" tabindex="0" role="button" aria-label="筛选排队中的任务">
+          <div class="stat-card-title">排队等待 <span>⏳</span></div>
+          <div id="stat-queued-count" class="stat-card-value">0</div>
+          <div class="stat-card-desc">等待后台队列依次处理</div>
+        </div>
+        <div class="stat-card" data-filter="attention" tabindex="0" role="button" aria-label="筛选需要处理的任务">
+          <div class="stat-card-title">需要处理 <span>⚠️</span></div>
+          <div id="stat-attention-count" class="stat-card-value">0</div>
+          <div class="stat-card-desc">地址失效或转写失败</div>
+        </div>
+        <div class="stat-card" data-filter="completed" tabindex="0" role="button" aria-label="筛选已完成的任务">
+          <div class="stat-card-title">已完成 <span>✓</span></div>
+          <div id="stat-completed-count" class="stat-card-value">0</div>
+          <div class="stat-card-desc">笔记与逐字稿已导出完毕</div>
+        </div>
+      </div>
+
+      <!-- Filter & Search Toolbar -->
+      <div class="toolbar" role="search" aria-label="任务筛选与搜索">
+        <div class="toolbar-left">
+          <input type="text" id="task-search-input" class="search-input" placeholder="搜索课程名称、课次、教师或任务 ID..." aria-label="搜索任务">
+          <select id="task-status-filter" class="filter-select" aria-label="按任务状态筛选">
+            <option value="all">全部状态</option>
+            <option value="running">处理中</option>
+            <option value="queued">排队等待</option>
+            <option value="attention">需要处理 (异常/失效)</option>
+            <option value="completed">已完成</option>
+            <option value="paused">已暂停</option>
+            <option value="cancelled">已取消</option>
+          </select>
+        </div>
+        <div class="toolbar-right">
+          <span id="sync-status-indicator" class="sync-status">每 2 秒自动同步</span>
+        </div>
+      </div>
+
+      <!-- Tasks List -->
+      <div id="tasks-container" class="tasks-container" aria-live="polite">
+        <!-- Rendered dynamically by dashboard.js -->
+        <div class="empty-state">
+          <div class="empty-state-icon">📂</div>
+          <div class="empty-state-title">正在加载任务列表...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 2: Settings & Validation -->
+    <section id="pane-settings" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-settings" tabindex="0">
+      <div class="settings-container">
+        <!-- Card 1: Model Selection (Strictly Mutually Exclusive) -->
+        <div class="settings-card">
+          <div class="settings-card-header">
+            <h2 class="settings-card-title">语音转写模型</h2>
+            <p class="settings-card-subtitle">请选择内置推荐预设或指定本机自定义模型路径。两者明确互斥，仅有一种实际生效模型。</p>
+          </div>
+
+          <div class="model-choice-box" role="radiogroup" aria-label="识别模型选择">
+            <!-- Option A: Preset -->
+            <div id="row-model-preset" class="model-option-row selected">
+              <input type="radio" id="radio-model-preset" name="model-source" value="preset" checked>
+              <div class="model-option-content">
+                <label for="radio-model-preset" class="model-option-label">使用内置推荐预设：</label>
+                <div class="model-option-input-wrap">
+                  <select id="select-model-preset" aria-label="内置推荐预设模型下拉列表">
+                    <option value="small">small (推荐预设 · 通用平衡，CPU 运算友好)</option>
+                    <option value="base">base (轻量预设 · 转写快速，适合快速粗转)</option>
+                    <option value="tiny">tiny (极速预设 · 资源消耗极低)</option>
+                    <option value="medium">medium (高精预设 · 识别率高，需较多运算资源)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Option B: Custom Path -->
+            <div id="row-model-custom" class="model-option-row">
+              <input type="radio" id="radio-model-custom" name="model-source" value="custom">
+              <div class="model-option-content">
+                <label for="radio-model-custom" class="model-option-label">指定本地模型路径：</label>
+                <div class="model-option-input-wrap">
+                  <input type="text" id="input-model-custom" placeholder="例如 D:\models\whisper-small" disabled aria-label="本地自定义模型路径输入框">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="model-callout">
+            <span>ℹ️</span>
+            <div>当前实际生效模型：<strong id="lbl-effective-model">small</strong></div>
+          </div>
+        </div>
+
+        <!-- Card 2: Resource Profile (Separated from Whisper Model) -->
+        <div class="settings-card">
+          <div class="settings-card-header">
+            <h2 class="settings-card-title">系统资源调度档位</h2>
+            <p class="settings-card-subtitle">资源档位独立于识别模型，用于控制后台转写进程的 CPU 线程配额与系统优先级。</p>
+          </div>
+
+          <div class="form-group">
+            <label for="select-resource-profile" class="form-label">调度模式档位：</label>
+            <select id="select-resource-profile">
+              <option value="balanced" selected>平衡模式（推荐 · 自适应调度，转写平稳且不影响浏览网页）</option>
+              <option value="low">节能模式（低系统占用 · 单线程后台静默处理，适合边上网课边转写）</option>
+              <option value="fast">高速模式（性能优先 · 多线程全速转写，适合课后快速出稿）</option>
+            </select>
+            <div class="form-help">档位将映射至后台转写任务的资源策略参数。</div>
+          </div>
+        </div>
+
+        <!-- Card 3: Storage & Execution Environment -->
+        <div class="settings-card">
+          <div class="settings-card-header">
+            <h2 class="settings-card-title">运行模式与输出目录</h2>
+            <p class="settings-card-subtitle">配置转写产物保存路径与离线环境策略。</p>
+          </div>
+
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="chk-offline">
+              <strong>严格离线模式</strong>
+            </label>
+            <div class="form-help">仅加载本机已有的模型与缓存，禁止一切网络模型下载行为。</div>
+          </div>
+
+          <div class="form-group">
+            <label for="input-output-dir" class="form-label">逐字稿默认输出目录：</label>
+            <input type="text" id="input-output-dir" placeholder="例如 D:\课程逐字稿（留空使用后台默认输出目录）">
+            <div class="form-help">Markdown 笔记与摘要将导出至该目录；重新导出时默认使用该目录。</div>
+          </div>
+
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="chk-keep-audio">
+              <strong>保留本地音频文件</strong>
+            </label>
+            <div class="form-help">默认在转写成功后自动清理中间音频文件以节省磁盘空间；勾选后将保留提取的音频。</div>
+          </div>
+        </div>
+
+        <!-- Card 4: Actions & Config Validation -->
+        <div class="settings-card">
+          <div class="settings-card-header">
+            <h2 class="settings-card-title">保存与环境自检</h2>
+            <p class="settings-card-subtitle">设置修改后即时自动生效；可点击“环境与配置自检”校验模型有效性与目录写入权限。</p>
+          </div>
+
+          <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <button id="btn-save-settings" class="btn btn-primary">手动保存设置</button>
+            <button id="btn-validate-config" class="btn btn-secondary">环境与配置自检</button>
+            <span id="save-status-text" style="font-size: 12px; color: var(--success); font-weight: 500;"></span>
+          </div>
+
+          <!-- Validation Output Container -->
+          <div id="validation-box" class="validation-box" style="display: none;" aria-live="polite">
+            <div class="validation-header">配置自检结果</div>
+            <div id="validation-checks-list"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Transcript Preview Modal -->
+  <div id="preview-modal" class="modal-backdrop" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="preview-modal-title">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h2 id="preview-modal-title" class="modal-title">逐字稿预览</h2>
+        <button id="btn-close-preview" class="btn-close" aria-label="关闭预览">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="margin-bottom: 12px; font-size: 12px; color: var(--text-muted);">
+          <span>💡 点击时间戳可在新标签中定位原课程时间点。标有【建议复核】的内容提示可人工核对。</span>
+        </div>
+        <div id="preview-segments-container" class="transcript-segments">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-preview-done" class="btn btn-primary">完成</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Re-export Directory Modal -->
+  <div id="export-modal" class="modal-backdrop" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="export-modal-title">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h2 id="export-modal-title" class="modal-title">重新导出逐字稿目录</h2>
+        <button id="btn-close-export" class="btn-close" aria-label="关闭导出对话框">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 13px; color: var(--text-secondary); margin-top: 0;">
+          重新导出将直接利用本地已保存的转写结果重新生成 Markdown 笔记，<strong>无需重新转写音频</strong>。
+        </p>
+        <div class="form-group">
+          <label for="input-export-dir" class="form-label">目标导出目录：</label>
+          <input type="text" id="input-export-dir" placeholder="例如 D:\课程导出笔记">
+        </div>
+        <div id="export-feedback" style="font-size: 12px; margin-top: 8px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-cancel-export" class="btn btn-secondary">取消</button>
+        <button id="btn-confirm-export" class="btn btn-primary">执行导出</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cache Cleanup Modal -->
+  <div id="cleanup-modal" class="modal-backdrop" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="cleanup-modal-title">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h2 id="cleanup-modal-title" class="modal-title">清理任务可再生缓存</h2>
+        <button id="btn-close-cleanup" class="btn-close" aria-label="关闭清理对话框">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 13px; color: var(--text-main); margin-top: 0;">
+          清理缓存将删除当前任务的<strong>中间音频切片与解压临时文件</strong>以释放磁盘空间。
+        </p>
+        <div class="hint-tag hint-audio-ready" style="margin-bottom: 12px;">
+          ✓ 安全说明：已生成的 Markdown 笔记与断点进度记录将被完整保留，不受影响；若后续重新运行该任务，可能需要重新获取音频。
+        </div>
+        <div id="cleanup-feedback" style="font-size: 12px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-cancel-cleanup" class="btn btn-secondary">取消</button>
+        <button id="btn-confirm-cleanup" class="btn btn-danger">确认清理缓存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast" style="display: none;" role="status" aria-live="polite"></div>
+
+  <!-- Scripts -->
+  <script src="common-client.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>

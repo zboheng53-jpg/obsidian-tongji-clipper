@@ -295,3 +295,68 @@ select:focus, input[type="text"]:focus {
   background-color: #e0f2fe;
   color: #0369a1;
 }
+
+.title-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-link-header {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.btn-link-header:hover {
+  background: #dbeafe;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.summary-box {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+
+.summary-box-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.summary-box-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.summary-box-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.summary-label {
+  color: #64748b;
+}
+
+.summary-val {
+  font-weight: 500;
+  color: #1e293b;
+}

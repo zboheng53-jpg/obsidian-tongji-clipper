@@ -7,8 +7,11 @@
     "activeTab",
     "scripting",
     "nativeMessaging",
-    "storage"
+    "storage",
+    "notifications",
+    "alarms"
   ],
+  "options_page": "dashboard.html",
   "host_permissions": [
     "https://look.tongji.edu.cn/*"
   ],

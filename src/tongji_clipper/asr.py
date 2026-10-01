@@ -72,6 +72,8 @@ class ASREngine:
         compute_type: str = "int8",
         download_root: Optional[str] = None,
         offline: bool = False,
+        cpu_threads: int = 4,
+        idle_timeout_sec: float = 300.0,
         transcribe_fn: Optional[Callable[..., Any]] = None,
     ):
         self.model_name = model_name
@@ -79,16 +81,36 @@ class ASREngine:
         self.compute_type = compute_type
         self.download_root = download_root or str(get_models_cache_dir())
         self.offline = offline
+        self.cpu_threads = max(1, int(cpu_threads))
+        self.idle_timeout_sec = float(idle_timeout_sec)
+        self.last_active_time = time.time()
         self._model = None
         self._mock_transcribe_fn = transcribe_fn
 
     @property
+    def model(self) -> Any:
+        return self._model
+
+    @model.setter
+    def model(self, val: Any) -> None:
+        self._model = val
+
+    @property
     def engine_signature(self) -> str:
         """Signature to detect if worker needs to reload engine for a new job."""
-        return f"{self.model_name}:{self.device}:{self.compute_type}:{self.download_root}:{self.offline}"
+        return f"{self.model_name}:{self.device}:{self.compute_type}:{self.download_root}:{self.offline}:{self.cpu_threads}"
+
+    def check_idle_unload(self) -> bool:
+        """Unloads model from memory if idle beyond idle_timeout_sec."""
+        if self._model is not None and (time.time() - self.last_active_time) > self.idle_timeout_sec:
+            logger.info("ASR engine idle for >%.0fs; unloading model from memory", self.idle_timeout_sec)
+            self._model = None
+            return True
+        return False
 
     def load_model(self) -> None:
         """Loads faster-whisper model with strict offline check and user download prompt."""
+        self.last_active_time = time.time()
         if self._mock_transcribe_fn is not None or self._model is not None:
             return
 
@@ -100,7 +122,7 @@ class ASREngine:
             )
 
         if self.offline:
-            logger.info("Loading model '%s' in strict offline mode (local_files_only=True)", self.model_name)
+            logger.info("Loading model '%s' in strict offline mode (local_files_only=True, cpu_threads=%d)", self.model_name, self.cpu_threads)
             try:
                 self._model = WhisperModel(
                     self.model_name,
@@ -108,6 +130,7 @@ class ASREngine:
                     compute_type=self.compute_type,
                     download_root=self.download_root,
                     local_files_only=True,
+                    cpu_threads=self.cpu_threads,
                 )
             except Exception as e:
                 raise RuntimeError(
@@ -115,7 +138,7 @@ class ASREngine:
                 ) from e
             return
 
-        print(f"[Tongji Clipper] 正在加载/检查 Faster-Whisper 模型 '{self.model_name}' (CPU {self.compute_type})...")
+        print(f"[Tongji Clipper] 正在加载/检查 Faster-Whisper 模型 '{self.model_name}' (CPU {self.compute_type}, threads={self.cpu_threads})...")
         try:
             self._model = WhisperModel(
                 self.model_name,
@@ -123,6 +146,7 @@ class ASREngine:
                 compute_type=self.compute_type,
                 download_root=self.download_root,
                 local_files_only=False,
+                cpu_threads=self.cpu_threads,
             )
         except Exception as e:
             raise RuntimeError(f"加载 Faster-Whisper 模型失败: {e}") from e
@@ -133,10 +157,24 @@ class ASREngine:
         start_sec: float,
         end_sec: float,
         language: str = "zh",
+        check_cancelled: Optional[Callable[[], bool]] = None,
     ) -> List[Dict[str, Any]]:
         """Transcribes a specific audio slice and returns relative segments."""
+        self.last_active_time = time.time()
         if self._mock_transcribe_fn is not None:
-            return self._mock_transcribe_fn(audio_path, start_sec, end_sec, language)
+            import inspect
+            sig = inspect.signature(self._mock_transcribe_fn)
+            if "check_cancelled" in sig.parameters:
+                return self._mock_transcribe_fn(audio_path, start_sec, end_sec, language, check_cancelled=check_cancelled)
+            mock_res = self._mock_transcribe_fn(audio_path, start_sec, end_sec, language)
+            if hasattr(mock_res, "__next__"):
+                out = []
+                for s in mock_res:
+                    if check_cancelled and check_cancelled():
+                        raise RuntimeError("ASR transcription cancelled by user")
+                    out.append(s)
+                return out
+            return mock_res
 
         if self._model is None:
             self.load_model()
@@ -174,6 +212,8 @@ class ASREngine:
 
             results = []
             for s in segments:
+                if check_cancelled and check_cancelled():
+                    raise RuntimeError("ASR transcription cancelled by user")
                 results.append({
                     "start": float(s.start),
                     "end": float(s.end),
@@ -189,6 +229,19 @@ class ASREngine:
                     p.unlink()
                 except OSError:
                     pass
+
+    def compute_config_fingerprint(
+        self,
+        language: str = "zh",
+        chunk_duration: float = 300.0,
+        chunk_overlap: float = 10.0,
+        base_time_offset: float = 0.0,
+        total_duration: float = 0.0,
+        audio_hash_hex: str = "",
+    ) -> str:
+        checkpoint_model_sig = f"{self.model_name}:{self.device}:{self.compute_type}:{self.download_root}:{self.offline}"
+        config_seed = f"{checkpoint_model_sig}:{language}:{chunk_duration}:{chunk_overlap}:{base_time_offset}:{total_duration}:{audio_hash_hex}"
+        return hashlib.sha256(config_seed.encode("utf-8")).hexdigest()[:16]
 
     def transcribe_audio_stream(
         self,
@@ -207,7 +260,11 @@ class ASREngine:
         Records structured checkpoints (next_start, raw_chunks, config_fingerprint).
         Guarantees tail chunk terminates without re-running.
         """
+        if check_cancelled and check_cancelled():
+            raise RuntimeError("ASR transcription cancelled by user")
         self.load_model()
+        if check_cancelled and check_cancelled():
+            raise RuntimeError("ASR transcription cancelled by user")
         all_segments: List[Dict[str, Any]] = []
         raw_chunks: List[Dict[str, Any]] = []
 
@@ -216,8 +273,14 @@ class ASREngine:
             with open(audio_path, 'rb') as audio_file:
                 for block in iter(lambda: audio_file.read(1024 * 1024), b''):
                     audio_hash.update(block)
-        config_seed = f"{self.engine_signature}:{language}:{chunk_duration}:{chunk_overlap}:{base_time_offset}:{total_duration}:{audio_hash.hexdigest()}"
-        config_fingerprint = hashlib.sha256(config_seed.encode("utf-8")).hexdigest()[:16]
+        config_fingerprint = self.compute_config_fingerprint(
+            language=language,
+            chunk_duration=chunk_duration,
+            chunk_overlap=chunk_overlap,
+            base_time_offset=base_time_offset,
+            total_duration=total_duration,
+            audio_hash_hex=audio_hash.hexdigest(),
+        )
 
         curr_start = 0.0
         step = chunk_duration - chunk_overlap
@@ -265,6 +328,7 @@ class ASREngine:
                 start_sec=curr_start,
                 end_sec=curr_end,
                 language=language,
+                check_cancelled=check_cancelled,
             )
 
             # Record raw chunk record
@@ -290,6 +354,10 @@ class ASREngine:
                     "end": round(global_end, 2),
                     "text": s["text"],
                 }
+
+                for metric in ("avg_logprob", "no_speech_prob"):
+                    if metric in s:
+                        global_seg[metric] = s[metric]
 
                 # Deduplicate ONLY across chunk boundary overlap window
                 if curr_start > 0 and is_overlap_duplicate(

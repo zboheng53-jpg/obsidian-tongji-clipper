@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import threading
 import logging
 import os
 from pathlib import Path
@@ -158,7 +159,16 @@ def resolve_non_colliding_path(directory: Path, base_name: str, ext: str) -> Pat
         rev += 1
 
 
-def export_job_results(
+_export_lock = threading.RLock()
+
+
+def export_job_results(job_info, segments, output_dir, timings):
+    # The HTTP server can receive exports from multiple windows at once.
+    with _export_lock:
+        return _export_job_results(job_info, segments, output_dir, timings)
+
+
+def _export_job_results(
     job_info: Dict[str, Any],
     segments: List[Dict[str, Any]],
     output_dir: Path,

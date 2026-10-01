@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -23,8 +24,10 @@ def _format_job_row(job: Dict[str, Any]) -> str:
     teacher = job.get("lecturer_name") or "-"
     pct = ""
     prog = job.get("progress_info")
-    if isinstance(prog, dict) and "percent" in prog:
-        pct = f" ({prog['percent']}%)"
+    if isinstance(prog, dict):
+        value = prog.get("chunk_percent", prog.get("percent"))
+        if isinstance(value, (int, float)) and math.isfinite(value):
+            pct = f" ({value}%)"
     err = f" [ERR: {job['error_message']}]" if job.get("error_message") else ""
     out = f" -> {job['output_dir']}" if job.get("output_dir") else ""
     return f"[{jid}] {status.upper()}{pct} | 课程: {title} | 教师: {teacher}{out}{err}"
@@ -57,6 +60,7 @@ def cmd_submit(args: argparse.Namespace) -> None:
         keep_audio=args.keep_audio,
         offline=args.offline,
         model_dir=args.model_dir,
+        resource_profile=args.resource_profile,
     )
 
     print(f"[CLI] 正在提交任务 (模型: {config.model}, 离线模式: {config.offline})...")
@@ -85,10 +89,13 @@ def cmd_submit(args: argparse.Namespace) -> None:
         while True:
             time.sleep(2.0)
             status_res = send_worker_request(f"/jobs/{job_id}", method="GET")
+            if status_res.get("error"):
+                print(f"\n状态暂不可用: {status_res['error']}", file=sys.stderr)
+                continue
             j = status_res.get("job", {})
             st = j.get("status")
             print(f"\r{_format_job_row(j)}", end="", flush=True)
-            if st in (JobStatus.COMPLETED.value, JobStatus.FAILED.value, JobStatus.CANCELLED.value, JobStatus.NEEDS_REFRESH.value):
+            if st in (JobStatus.COMPLETED.value, JobStatus.FAILED.value, JobStatus.CANCELLED.value, JobStatus.NEEDS_REFRESH.value, JobStatus.PAUSED.value):
                 print()
                 if st != JobStatus.COMPLETED.value:
                     print(f"任务结束但未完成: 状态={st}, 错误={j.get('error_message')}", file=sys.stderr)
@@ -131,7 +138,21 @@ def cmd_cancel(args: argparse.Namespace) -> None:
     if "error" in res:
         print(f"取消失败: {res['error']}", file=sys.stderr)
         sys.exit(1)
-    print(f"任务 {args.job_id} 已取消")
+    if res.get("cancelled") is False:
+        print("任务当前无法取消，请查询最新状态", file=sys.stderr)
+        sys.exit(1)
+    print(f"已发送任务 {args.job_id} 的取消请求；以任务状态确认为准")
+
+
+def cmd_control(args: argparse.Namespace) -> None:
+    res = send_worker_request(f"/{args.command}", method="POST", body={"job_id": args.job_id})
+    if res.get("error") or res.get("status") != "ok" or res.get("paused") is False:
+        print(f"操作失败: {res.get('error') or '任务当前不允许此操作'}", file=sys.stderr)
+        sys.exit(1)
+    if res.get("job"):
+        print(_format_job_row(res["job"]))
+    else:
+        print(f"操作请求已发送，请通过 status {args.job_id} 查看确认状态")
 
 
 def cmd_refresh(args: argparse.Namespace) -> None:
@@ -158,6 +179,9 @@ def cmd_worker(args: argparse.Namespace) -> None:
             run_server(port=args.port)
     elif action == "stop":
         res = send_worker_request("/shutdown", method="POST")
+        if res.get("error"):
+            print(f"停止失败: {res['error']}", file=sys.stderr)
+            sys.exit(1)
         print("已向 Worker 发送关闭信号")
     elif action == "status":
         info = load_worker_info()
@@ -196,6 +220,7 @@ def main() -> None:
     p_submit.add_argument("--model-dir", default=None, help="自定义模型本地缓存目录")
     p_submit.add_argument("--device", default="cpu", help="计算设备 (默认: cpu)")
     p_submit.add_argument("--compute-type", default="int8", help="计算精度 (默认: int8)")
+    p_submit.add_argument("--resource-profile", choices=["low", "balanced", "fast"], default="balanced", help="资源档位：低占用、均衡、快速")
     p_submit.add_argument("--output-dir", default=None, help="导出目录 (默认: ./output)")
     p_submit.add_argument("--time-offset", type=float, default=0.0, help="起始时间偏移量 (秒)")
     p_submit.add_argument("--stream-id", default=None, help="指定媒体流 ID")
@@ -215,6 +240,11 @@ def main() -> None:
     p_cancel = subparsers.add_parser("cancel", help="取消任务")
     p_cancel.add_argument("job_id", help="任务 ID")
     p_cancel.set_defaults(func=cmd_cancel)
+
+    for action, help_text in (("pause", "暂停任务并保留断点"), ("resume", "继续已暂停任务"), ("retry", "重试失败或取消的任务")):
+        control_parser = subparsers.add_parser(action, help=help_text)
+        control_parser.add_argument("job_id", help="任务 ID")
+        control_parser.set_defaults(func=cmd_control)
 
     # refresh
     p_refresh = subparsers.add_parser("refresh", help="更新已失效的媒体签名 URL 并重新入队")

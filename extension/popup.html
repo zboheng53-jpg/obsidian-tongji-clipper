@@ -9,12 +9,16 @@
   <div class="header">
     <div class="title-bar">
       <h2>同济课程逐字稿</h2>
-      <span id="worker-badge" class="badge badge-waiting">Worker 检测中</span>
+      <div class="title-right">
+        <span id="worker-badge" class="badge badge-waiting">服务检测中</span>
+        <button id="btn-open-dashboard" class="btn-link-header" title="打开常驻任务中心">任务中心 ↗</button>
+      </div>
     </div>
   </div>
 
   <div id="not-course-page" class="card warning hidden">
     <p>⚠️ 请在同济大学课程页面使用：<br><code>https://look.tongji.edu.cn/livingroom?...</code></p>
+    <button id="btn-open-dashboard-alt" class="btn-link" style="margin-top:6px;display:inline-block;">打开常驻任务中心 ↗</button>
   </div>
 
   <div id="media-not-ready" class="card warning hidden">
@@ -52,39 +56,40 @@
       <label for="stream-select">媒体画面流：</label>
       <select id="stream-select"></select>
     </div>
-    <div class="info-group">
-      <label for="model-select">转写模型：</label>
-      <select id="model-select">
-        <option value="small" selected>small (默认推荐, CPU int8)</option>
-        <option value="base">base (轻量快速)</option>
-        <option value="tiny">tiny (极速测试)</option>
-        <option value="medium">medium (高精度)</option>
-      </select>
+
+    <!-- 转写配置摘要（轻量展示，详细设置位于任务中心） -->
+    <div class="summary-box">
+      <div class="summary-box-header">
+        <span class="summary-box-title">转写配置摘要</span>
+        <button id="btn-open-settings" class="btn-link" title="在任务中心中修改设置">修改设置 ⚙</button>
+      </div>
+      <div class="summary-box-row">
+        <span class="summary-label">生效模型：</span>
+        <span id="summary-model" class="summary-val">正在加载配置...</span>
+      </div>
+      <div class="summary-box-row">
+        <span class="summary-label">资源档位：</span>
+        <span id="summary-profile" class="summary-val">平衡模式（推荐）</span>
+      </div>
+      <div class="summary-box-row">
+        <span class="summary-label">运行/存储：</span>
+        <span id="summary-flags" class="summary-val">在线模式 · 默认目录</span>
+      </div>
     </div>
-    <div class="info-group">
-      <label for="custom-model-path">本地模型路径（可选）：</label>
-      <input type="text" id="custom-model-path" placeholder="例如 D:\models\whisper-small">
-    </div>
-    <div class="info-group checkbox-group">
-      <label><input type="checkbox" id="chk-offline"> 严格离线模式 (仅加载本地缓存)</label>
-    </div>
-    <div class="info-group">
-      <label for="output-dir">逐字稿输出目录（可选）：</label>
-      <input type="text" id="output-dir" placeholder="例如 D:\课程逐字稿">
-    </div>
-    <div class="info-group checkbox-group">
-      <label><input type="checkbox" id="keep-audio"> 保留本地音频</label>
-    </div>
+
     <button id="btn-submit" class="btn btn-primary">提交转写任务</button>
     <div class="tip notice-tip">
-      等待任务进入“转写”阶段后再关闭课程页；地址失效时需刷新课程页重新提交。模型首次使用可能联网下载。
+      提交后将在后台独立转写；音频提取就绪后即可关闭网页；可在任务中心查看完整进度、逐字稿与产物。
     </div>
   </div>
 
   <div class="card">
     <div class="section-header">
       <h3>本地转写任务</h3>
-      <button id="btn-refresh-tasks" class="btn-link">刷新</button>
+      <div class="header-actions">
+        <button id="btn-open-dashboard-tasks" class="btn-link" title="查看所有任务、预览逐字稿、导出笔记">完整任务中心 ↗</button>
+        <button id="btn-refresh-tasks" class="btn-link">刷新</button>
+      </div>
     </div>
     <p class="tip notice-tip">每 2 秒自动更新 · 百分比表示转写阶段进度<br><span id="tasks-sync-status">正在读取进度…</span></p>
     <div id="tasks-list" class="tasks-list">
@@ -94,6 +99,7 @@
 
   <div id="message-bar" class="message-bar hidden"></div>
 
+  <script src="common-client.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

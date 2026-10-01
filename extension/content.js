@@ -5,19 +5,18 @@
 
 (function () {
   let interceptedData = null;
+  let boundMediaIdentity = null;
 
-  // 1. Listen for messages from MAIN world injected.js
-  window.addEventListener("message", function (event) {
-    if (event.source !== window) return;
-    if (event.origin !== window.location.origin) return;
-    if (!event.data || event.data.source !== "TONGJI_CLIPPER_MAIN") return;
+  // On initialization, if a video is already playing/ready, bind it to initial URL params
+  const initialParams = parseUrlParams();
+  let observedIdentity = initialParams;
+  let initialDocument = true;
+  const initialVideo = document.querySelector("video");
+  if (initialVideo && (initialVideo.currentSrc || initialVideo.src)) {
+    boundMediaIdentity = { ...initialParams };
+  }
 
-    if (event.data.type === "SUB_INFO_CAPTURED") {
-      interceptedData = event.data.payload;
-    }
-  });
-
-  // 2. Parse course_id, sub_id, tenant_code from URL
+  // 1. Parse course_id, sub_id, tenant_code from URL
   function parseUrlParams() {
     const url = new URL(window.location.href);
     const course_id = url.searchParams.get("course_id") || url.searchParams.get("courseId") || "";
@@ -25,11 +24,83 @@
     const tenant_code = url.searchParams.get("tenant_code") || "tongji";
 
     return {
-      course_id: course_id,
-      sub_id: sub_id,
-      tenant_code: tenant_code,
+      course_id: String(course_id),
+      sub_id: String(sub_id),
+      tenant_code: String(tenant_code),
     };
   }
+
+  function isIdentityMatch(idA, idB) {
+    if (!idA || !idB) return false;
+    const cA = String(idA.course_id || "");
+    const cB = String(idB.course_id || "");
+    const sA = String(idA.sub_id || "");
+    const sB = String(idB.sub_id || "");
+    const tA = String(idA.tenant_code || "");
+    const tB = String(idB.tenant_code || "");
+    if (cA && cB && cA !== cB) return false;
+    if (sA && sB && sA !== sB) return false;
+    if (tA && tB && tA !== tB) return false;
+    return true;
+  }
+
+  function purgeMismatchedInterceptedData() {
+    const current = parseUrlParams();
+    if (!isIdentityMatch(observedIdentity, current)) {
+      initialDocument = false;
+      observedIdentity = current;
+      interceptedData = null;
+      boundMediaIdentity = null;
+    }
+    if (interceptedData && !isIdentityMatch(interceptedData, current)) {
+      interceptedData = null;
+    }
+    if (boundMediaIdentity && !isIdentityMatch(boundMediaIdentity, current)) {
+      boundMediaIdentity = null;
+    }
+  }
+
+  // 2. Listen for messages from MAIN world injected.js
+  window.addEventListener("message", function (event) {
+    if (event.source !== window) return;
+    if (event.origin !== window.location.origin) return;
+    if (!event.data || event.data.source !== "TONGJI_CLIPPER_MAIN") return;
+
+    if (event.data.type === "COURSE_NAVIGATED") {
+      // A route notification may arrive after another navigation; either change
+      // invalidates the initial-document DOM fallback.
+      if (!isIdentityMatch(event.data.identity, observedIdentity)) {
+        initialDocument = false;
+        interceptedData = null;
+        boundMediaIdentity = null;
+      }
+      purgeMismatchedInterceptedData();
+      return;
+    }
+
+    if (event.data.type === "SUB_INFO_CAPTURED") {
+      purgeMismatchedInterceptedData();
+      const payload = event.data.payload;
+      if (!payload) return;
+      const current = parseUrlParams();
+      const reqId = event.data.requestIdentity;
+
+      // Reject late or out-of-order responses if request identity does not match current URL
+      if (reqId && !isIdentityMatch(reqId, current)) {
+        return;
+      }
+      // Also reject if payload identity does not match current URL
+      if (!isIdentityMatch(payload, current)) {
+        return;
+      }
+
+      interceptedData = payload;
+      boundMediaIdentity = { ...current };
+    }
+  });
+
+  window.addEventListener("popstate", purgeMismatchedInterceptedData);
+  window.addEventListener("hashchange", purgeMismatchedInterceptedData);
 
   // 3. Build stable source_url with query parameters
   function getStableSourceUrl() {
@@ -40,19 +111,29 @@
 
   // 4. Merge API metadata with DOM video stream
   function getBestCapture() {
+    purgeMismatchedInterceptedData();
     const params = parseUrlParams();
     const stableUrl = getStableSourceUrl();
 
     const video = document.querySelector("video");
     const videoSrc = video ? (video.currentSrc || video.src || "") : "";
+    if (!boundMediaIdentity && initialDocument && videoSrc.startsWith("https://")) {
+      boundMediaIdentity = { ...params };
+    }
 
     const titleEl = document.querySelector(".course_name, .course-title");
     const domTitle = titleEl ? titleEl.textContent.replace(/\s+/g, ' ').replace(/^回放\s*/, '').trim() : document.title;
 
     let streams = [];
     if (interceptedData && Array.isArray(interceptedData.media_streams) && interceptedData.media_streams.length > 0) {
-      streams = interceptedData.media_streams.map((s, i) => ({stream_id: i === 0 ? 'stream_main' : String(s.stream_id), name: String(s.name || '画面'), signed_url: String(s.signed_url || ''), time_offset: Number(s.time_offset || 0)}));
-    } else if (videoSrc && videoSrc.startsWith("https://")) {
+      streams = interceptedData.media_streams.map((s, i) => ({
+        stream_id: i === 0 ? 'stream_main' : String(s.stream_id),
+        name: String(s.name || '画面'),
+        signed_url: String(s.signed_url || ''),
+        time_offset: Number(s.time_offset || 0),
+      }));
+    } else if (boundMediaIdentity && isIdentityMatch(boundMediaIdentity, params) && videoSrc && videoSrc.startsWith("https://")) {
+      // DOM fallback is strictly allowed ONLY if boundMediaIdentity matches current course identity
       streams.push({
         stream_id: "stream_main",
         name: "当前播放画面 (DOM)",
@@ -63,9 +144,9 @@
 
     return {
       schema_version: 1,
-      tenant_code: (interceptedData && interceptedData.tenant_code) || params.tenant_code || "tongji",
-      course_id: (interceptedData && interceptedData.course_id) || params.course_id || "course",
-      sub_id: (interceptedData && interceptedData.sub_id) || params.sub_id || "sub",
+      tenant_code: params.tenant_code || "tongji",
+      course_id: params.course_id || "course",
+      sub_id: params.sub_id || "sub",
       source_url: stableUrl,
       course_title: (interceptedData && interceptedData.course_title) || domTitle || document.title,
       sub_title: (interceptedData && interceptedData.sub_title) || document.title,

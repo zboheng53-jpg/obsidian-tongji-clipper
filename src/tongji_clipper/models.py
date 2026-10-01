@@ -17,6 +17,9 @@ from tongji_clipper.config import assert_safe_id, sanitize_url
 class JobStatus(str, Enum):
     QUEUED = "queued"
     RUNNING = "running"
+    PAUSING = "pausing"
+    PAUSED = "paused"
+    CANCELLING = "cancelling"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -238,12 +241,15 @@ class JobConfig:
     offline: bool = False
     model_dir: Optional[str] = None
     output_dir: Optional[str] = None
+    resource_profile: str = "balanced"
 
     def __post_init__(self) -> None:
         if not math.isfinite(self.chunk_duration) or self.chunk_duration <= 0:
             raise ValueError("chunk_duration must be positive and finite")
         if not math.isfinite(self.chunk_overlap) or not 0 <= self.chunk_overlap < self.chunk_duration:
             raise ValueError("chunk_overlap must be finite and less than chunk_duration")
+        if self.resource_profile not in ("low", "balanced", "fast"):
+            self.resource_profile = "balanced"
 
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)
@@ -261,6 +267,7 @@ class JobConfig:
             offline=bool(data.get("offline", False)),
             model_dir=data.get("model_dir"),
             output_dir=data.get("output_dir"),
+            resource_profile=str(data.get("resource_profile", "balanced")),
         )
 
 
@@ -275,8 +282,8 @@ def compute_idempotency_key(
 ) -> str:
     """
     Computes deterministic idempotency key.
-    Includes content-affecting parameters (model, device, language, chunking, time_offset, local path identity, output_dir, keep_audio).
-    IMPORTANT: Must NOT include signed_url query tokens/signatures!
+    Includes content-affecting parameters (model, device, language, chunking, time_offset, local path identity).
+    IMPORTANT: Must NOT include signed_url query tokens, nor output_dir/keep_audio delivery options!
     """
     local_part = ""
     if local_file_path:
@@ -288,7 +295,35 @@ def compute_idempotency_key(
         f"{tenant_code}:{course_id}:{sub_id}:{stream_id}:{time_offset:.3f}:"
         f"{config.model}:{config.device}:{config.compute_type}:{config.language}:"
         f"{config.chunk_duration:.1f}:{config.chunk_overlap:.1f}:"
-        f"{config.model_dir}:{config.offline}:{config.output_dir}:{config.keep_audio}{local_part}"
+        f"{config.model_dir}:{config.offline}{local_part}"
+    )
+    return hashlib.sha256(seed.encode("utf-8")).hexdigest()
+
+
+def compute_legacy_idempotency_key(
+    tenant_code: str,
+    course_id: str,
+    sub_id: str,
+    stream_id: str,
+    time_offset: float,
+    config: JobConfig,
+    local_file_path: Optional[str] = None,
+) -> str:
+    """
+    Legacy idempotency key computation (Phase 1) which included keep_audio and output_dir.
+    Used exclusively for backward-compatible lookup of already completed jobs.
+    """
+    local_part = ""
+    if local_file_path:
+        p = Path(local_file_path).resolve()
+        stat_size = p.stat().st_size if p.is_file() else 0
+        local_part = f":{p.as_posix()}:{stat_size}:{p.stat().st_mtime_ns if p.is_file() else 0}"
+
+    seed = (
+        f"{tenant_code}:{course_id}:{sub_id}:{stream_id}:{time_offset:.3f}:"
+        f"{config.model}:{config.device}:{config.compute_type}:{config.language}:"
+        f"{config.chunk_duration:.1f}:{config.chunk_overlap:.1f}:{config.keep_audio}:"
+        f"{config.output_dir}:{config.model_dir}:{config.offline}{local_part}"
     )
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()
 
