@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tongji-clipper"
+version = "0.1.0"
+description = "Offline course transcription MVP for Tongji Look"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "Tongji Clipper Contributors" }
+]
+dependencies = []
+
+[project.optional-dependencies]
+asr = [
+    "faster-whisper>=1.0.0",
+]
+
+[project.scripts]
+tongji-clipper = "tongji_clipper.cli:main"
+tongji-worker = "tongji_clipper.worker.server:main"
+tongji-bridge = "tongji_clipper.native_host.bridge:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

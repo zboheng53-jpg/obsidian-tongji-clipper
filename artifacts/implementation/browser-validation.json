@@ -1,0 +1,39 @@
+{
+  "date": "2026-10-01",
+  "browser": "Edge",
+  "method": "Actual content.js executed in a temporary isolated CDP validation world with a runtime-message test adapter; not an installed extension",
+  "source_url": "https://look.tongji.edu.cn/livingroom?course_id=12345&sub_id=67890&tenant_code=222",
+  "dom_capture_ready": true,
+  "media_host": "look.tongji.edu.cn",
+  "tenant_code": "222",
+  "stream_id": "stream_main",
+  "seek_requested_seconds": 123,
+  "seek_observed_seconds": 123,
+  "media_duration_seconds": 5997.7025,
+  "api_adapter_fixture_test": "passed; preview_url with numeric-key video_list, metadata, excluded extra credential fields",
+  "extension_installed": true,
+  "extension_id": "[local-extension-id]",
+  "native_host_registered": true,
+  "installation": "User loaded unpacked extension; host registered in HKCU with exact allowed extension ID",
+  "real_extension_native_ping": {
+    "status": "ok",
+    "worker_pid": "[local]",
+    "port": "[local]"
+  },
+  "real_extension_local_sample_job": {
+    "job_id": "browser-validation-job",
+    "status": "completed",
+    "input": "existing 30-second local audio sample sent through the installed content script and Native Messaging",
+    "output_dir": "artifacts/implementation/browser-native/sample-output"
+  },
+  "real_installed_extension_hash_seek_seconds": 123.007893,
+  "temporary_course_tab_closed": true,
+  "worker_query_after_tab_closed": "completed",
+  "initial_settings": {
+    "customModelPath": "models/faster-whisper-small",
+    "isOffline": true,
+    "outputDir": "output",
+    "only_previously_unset_values_filled": true
+  },
+  "limits": "Popup click-through, whole online course acquisition/transcription, browser restart and signature expiry not yet tested; earlier DOM capture used a debug adapter"
+}

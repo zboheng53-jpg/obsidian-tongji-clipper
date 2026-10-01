@@ -1,0 +1,18 @@
+{
+  "captured_at": "2026-10-01T15:50:50.6252498+08:00",
+  "source_host": "look.tongji.edu.cn",
+  "signature_query_names": [
+    "clientUUID",
+    "t"
+  ],
+  "offset_seconds": 120,
+  "requested_duration_seconds": 30,
+  "actual_duration_seconds": 29.999813,
+  "codec": "pcm_s16le",
+  "sample_rate": 16000,
+  "channels": 1,
+  "size_bytes": 960072,
+  "sample_path": "artifacts/probe/sample.wav",
+  "credential_mode": "signed URL only; no Cookie or Authorization supplied",
+  "verification": "passed"
+}

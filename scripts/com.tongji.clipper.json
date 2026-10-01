@@ -1,0 +1,7 @@
+{
+  "name": "com.tongji.clipper",
+  "description": "Tongji Clipper Native Messaging Host Bridge",
+  "path": "run-bridge.bat",
+  "type": "stdio",
+  "allowed_origins": []
+}

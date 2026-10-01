@@ -1,0 +1,38 @@
+{
+  "model": "faster-whisper-small",
+  "device": "cpu",
+  "compute_type": "int8",
+  "language": "zh",
+  "duration": 29.9998125,
+  "source_offset_seconds": 120,
+  "model_load_seconds": 1.4680884999997943,
+  "inference_seconds": 2.298409199998787,
+  "segments": [
+    {
+      "start": 2.77,
+      "end": 10.77,
+      "text": "那么,我们讲了啊,那么简化结果是一个主使和主剧,对吧?"
+    },
+    {
+      "start": 10.77,
+      "end": 12.77,
+      "text": "如果主使、主剧都对您吗?"
+    },
+    {
+      "start": 15.62,
+      "end": 16.62,
+      "text": "挺好,对不对?"
+    },
+    {
+      "start": 21.94,
+      "end": 23.94,
+      "text": "主使、主剧对您吗?"
+    },
+    {
+      "start": 23.94,
+      "end": 27.25,
+      "text": "哎,所以"
+    }
+  ],
+  "quality": "unreviewed ASR; not a human reference transcript"
+}

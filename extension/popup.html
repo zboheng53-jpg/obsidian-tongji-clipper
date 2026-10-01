@@ -1,47 +1,99 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>同济课程剪藏</title>
-    <link rel="stylesheet" href="popup.css">
-  </head>
-  <body>
-    <main class="clipper" aria-labelledby="title">
-      <header class="titlebar">
-        <span class="mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" role="img">
-            <path d="M12 2.25 20.1 8l-2.8 10.3L12 21.75l-5.3-3.45L3.9 8 12 2.25Z"></path>
-            <path d="m12 5.6 4.7 3.3-1.65 6.15L12 17l-3.05-1.95L7.3 8.9 12 5.6Z"></path>
-          </svg>
-        </span>
-        <div>
-          <h1 id="title">课程剪藏</h1>
-          <p>保存到 Obsidian</p>
-        </div>
-      </header>
+<head>
+  <meta charset="UTF-8">
+  <title>同济课程逐字稿采集器</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="header">
+    <div class="title-bar">
+      <h2>同济课程逐字稿</h2>
+      <span id="worker-badge" class="badge badge-waiting">Worker 检测中</span>
+    </div>
+  </div>
 
-      <label class="path-field" for="relative-path">
-        <span>保存文件夹（绝对路径）</span>
-        <input
-          id="relative-path"
-          type="text"
-          value=""
-          placeholder="D:\\Obsidian\\竞赛库\\11_比赛现场速查包"
-          autocomplete="off"
-          spellcheck="false"
-        >
-      </label>
+  <div id="not-course-page" class="card warning hidden">
+    <p>⚠️ 请在同济大学课程页面使用：<br><code>https://look.tongji.edu.cn/livingroom?...</code></p>
+  </div>
 
-      <p id="status" class="status" role="status" aria-live="polite"></p>
+  <div id="media-not-ready" class="card warning hidden">
+    <div class="section-header">
+      <p>⏳ 尚未检测到课程媒体流或视频未播放。</p>
+      <button id="btn-refresh-capture-alt" class="btn-link">重新探测</button>
+    </div>
+    <p class="tip">提示：请确保页面已加载并已开始播放视频。</p>
+  </div>
 
-      <button id="clip-button" class="clip-button" type="button">
-        <span>剪藏到 Obsidian</span>
-        <svg viewBox="0 0 20 20" aria-hidden="true">
-          <path d="m7.5 4.75 5.25 5.25-5.25 5.25"></path>
-        </svg>
-      </button>
-    </main>
-    <script src="popup.js"></script>
-  </body>
+  <div id="capture-container" class="card hidden">
+    <div class="section-header">
+      <h3>当前课程信息</h3>
+      <button id="btn-refresh-capture" class="btn-link">重新探测</button>
+    </div>
+    <div class="info-group">
+      <label>课程：</label>
+      <div id="course-title" class="val">-</div>
+    </div>
+    <div class="info-group">
+      <label>课时：</label>
+      <div id="sub-title" class="val">-</div>
+    </div>
+    <div class="info-row">
+      <div class="info-group half">
+        <label>教师：</label>
+        <div id="lecturer-name" class="val">-</div>
+      </div>
+      <div class="info-group half">
+        <label>教室：</label>
+        <div id="room-name" class="val">-</div>
+      </div>
+    </div>
+    <div class="info-group">
+      <label for="stream-select">媒体画面流：</label>
+      <select id="stream-select"></select>
+    </div>
+    <div class="info-group">
+      <label for="model-select">转写模型：</label>
+      <select id="model-select">
+        <option value="small" selected>small (默认推荐, CPU int8)</option>
+        <option value="base">base (轻量快速)</option>
+        <option value="tiny">tiny (极速测试)</option>
+        <option value="medium">medium (高精度)</option>
+      </select>
+    </div>
+    <div class="info-group">
+      <label for="custom-model-path">本地模型路径（可选）：</label>
+      <input type="text" id="custom-model-path" placeholder="例如 D:\models\whisper-small">
+    </div>
+    <div class="info-group checkbox-group">
+      <label><input type="checkbox" id="chk-offline"> 严格离线模式 (仅加载本地缓存)</label>
+    </div>
+    <div class="info-group">
+      <label for="output-dir">逐字稿输出目录（可选）：</label>
+      <input type="text" id="output-dir" placeholder="例如 D:\课程逐字稿">
+    </div>
+    <div class="info-group checkbox-group">
+      <label><input type="checkbox" id="keep-audio"> 保留本地音频</label>
+    </div>
+    <button id="btn-submit" class="btn btn-primary">提交转写任务</button>
+    <div class="tip notice-tip">
+      等待任务进入“转写”阶段后再关闭课程页；地址失效时需刷新课程页重新提交。模型首次使用可能联网下载。
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-header">
+      <h3>本地转写任务</h3>
+      <button id="btn-refresh-tasks" class="btn-link">刷新</button>
+    </div>
+    <p class="tip notice-tip">每 2 秒自动更新 · 百分比表示转写阶段进度<br><span id="tasks-sync-status">正在读取进度…</span></p>
+    <div id="tasks-list" class="tasks-list">
+      <div class="empty">暂无任务记录</div>
+    </div>
+  </div>
+
+  <div id="message-bar" class="message-bar hidden"></div>
+
+  <script src="popup.js"></script>
+</body>
 </html>

@@ -1,24 +1,44 @@
 {
   "manifest_version": 3,
-  "name": "Tongji Course Clipper",
-  "version": "0.2.0",
-  "description": "一键把同济课程回放转写为 Obsidian Markdown。",
-  "permissions": ["activeTab", "scripting", "notifications", "storage", "alarms"],
+  "name": "同济课程逐字稿采集器",
+  "version": "1.0.0",
+  "description": "同济大学Look平台课程音视频逐字稿本地采集与转写扩展",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "nativeMessaging",
+    "storage"
+  ],
   "host_permissions": [
-    "https://look.tongji.edu.cn/*",
-    "http://127.0.0.1:8765/*"
+    "https://look.tongji.edu.cn/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
-  "icons": {
-    "128": "icon-128.png"
-  },
-  "action": {
-    "default_title": "剪藏当前同济课程",
-    "default_popup": "popup.html",
-    "default_icon": {
-      "128": "icon-128.png"
+  "content_scripts": [
+    {
+      "matches": [
+        "https://look.tongji.edu.cn/*"
+      ],
+      "js": [
+        "injected.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://look.tongji.edu.cn/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "world": "ISOLATED",
+      "run_at": "document_start"
     }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "同济逐字稿采集"
   }
 }

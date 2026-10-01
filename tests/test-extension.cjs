@@ -1,0 +1,30 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+
+(async () => {
+  const listeners = {};
+  const source = 'https://look.tongji.edu.cn/livingroom?course_id=100&sub_id=200&tenant_code=222';
+  const location = new URL(source);
+  const video = {currentSrc:'https://look.tongji.edu.cn/play/example.mp4?t=TEST',readyState:1,currentTime:0,play:()=>Promise.resolve()};
+  let onMessage;
+  const body = {data:{course_id:100,sub_id:200,course_title:'测试课程',lecturer_name:'测试教师',video_list:{'0':{id:5,preview_url:video.currentSrc,time_offset:'0'}},Authorization:'SHOULD_NOT_LEAVE',cookie:'SHOULD_NOT_LEAVE'}};
+  const document = {readyState:'complete',title:'测试课程',querySelector:sel=>sel==='video'?video:{textContent:'回放 测试课程'}};
+  const window = {location,addEventListener:(type,fn)=>listeners[type]=fn,fetch:async()=>({clone:()=>({json:async()=>body})}),postMessage:data=>listeners.message({source:window,origin:location.origin,data})};
+  function Xhr(){}; Xhr.prototype.open=()=>{}; Xhr.prototype.send=()=>{};
+  const context = vm.createContext({window,document,chrome:{runtime:{onMessage:{addListener:fn=>onMessage=fn}}},URL,URLSearchParams,XMLHttpRequest:Xhr,console,setInterval,clearInterval});
+  vm.runInContext(fs.readFileSync('extension/content.js','utf8'),context);
+  vm.runInContext(fs.readFileSync('extension/injected.js','utf8'),context);
+  await window.fetch('/courseapi/v3/portal-home-setting/get-sub-info?course_id=100&sub_id=200');
+  await new Promise(resolve=>setImmediate(resolve));
+  let result; onMessage({type:'GET_CAPTURE_STATE'},{},v=>result=v);
+  assert.equal(result.isReady,true);
+  assert.equal(result.capture.source_url,source);
+  assert.equal(result.capture.lecturer_name,'测试教师');
+  assert.equal(result.capture.media_streams[0].stream_id,'stream_main');
+  assert.equal(result.capture.media_streams[0].signed_url,video.currentSrc);
+  assert.ok(!JSON.stringify(result.capture).includes('SHOULD_NOT_LEAVE'));
+  onMessage({type:'SEEK_VIDEO',seconds:123},{},()=>{});
+  assert.equal(video.currentTime,123);
+  console.log('Extension fixture tests passed: API preview_url/object list, metadata, credential exclusion, stable link, seek.');
+})().catch(error=>{console.error(error);process.exitCode=1;});

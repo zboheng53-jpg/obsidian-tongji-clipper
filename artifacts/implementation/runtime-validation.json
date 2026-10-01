@@ -1,0 +1,19 @@
+{
+  "job_id": "runtime-validation-job",
+  "status": "completed",
+  "offline": true,
+  "model": "models/faster-whisper-small",
+  "sample_duration_seconds": 29.999813,
+  "source_offset_seconds": 120,
+  "wall_seconds": 10.72239509999963,
+  "segment_count": 5,
+  "markdown": "artifacts/implementation/transcripts/sample.md",
+  "subtitle": "artifacts/implementation/transcripts/sample.srt",
+  "segments": "artifacts/implementation/transcripts/sample.segments.json",
+  "idempotent_resubmission": true,
+  "native_stdio_ping": true,
+  "worker_survives_bridge_exit": true,
+  "original_audio_preserved": true,
+  "temporary_audio_removed": true,
+  "quality": "ASR output, not manually corrected or accuracy certified"
+}

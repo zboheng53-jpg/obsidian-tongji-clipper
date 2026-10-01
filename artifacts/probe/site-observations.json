@@ -1,0 +1,84 @@
+{
+  "observed_on": "2026-10-01",
+  "timezone": "Asia/Shanghai",
+  "method": "Authenticated browser DOM and normal Network responses; no credential values persisted",
+  "samples": [
+    {
+      "course_id": "sample-1",
+      "sub_id": "session-1",
+      "tenant_code": "222",
+      "course_title": "示例课程1",
+      "sub_title": "示例课次",
+      "lecturer_name": "示例教师",
+      "course_teachers": [
+        "示例教师"
+      ],
+      "room_name": "示例教室",
+      "scheduled_time": "示例时段",
+      "source_url": "https://look.tongji.edu.cn/livingroom?course_id=sample&sub_id=sample&tenant_code=222",
+      "api_duration_seconds": 5997,
+      "media_duration_seconds": 5997.7025,
+      "video_list_shape": "object",
+      "video_id": "sample-video",
+      "time_offset": "0",
+      "is_m3u8": "no",
+      "enable_translation": 0,
+      "dom_caption_tracks": 0,
+      "media_response_status": 206,
+      "media_total_bytes": 799998732,
+      "signature_query_keys": [
+        "clientUUID",
+        "t"
+      ],
+      "media_download_probe": "passed without Cookie or Authorization",
+      "ffmpeg_actual_video": {
+        "codec": "h264",
+        "width": 1280,
+        "height": 720
+      },
+      "ffmpeg_actual_audio": {
+        "codec": "aac",
+        "sample_rate": 48000,
+        "channels": 2,
+        "bitrate": 128000
+      },
+      "audio_sample": {
+        "start_seconds": 120,
+        "duration_seconds": 29.999813,
+        "size_bytes": 960072,
+        "codec": "pcm_s16le",
+        "sample_rate": 16000,
+        "channels": 1
+      }
+    },
+    {
+      "course_id": "sample-2",
+      "sub_id": "session-2",
+      "tenant_code": "222",
+      "course_title": "示例课程2",
+      "sub_title": "示例课次",
+      "lecturer_name": "示例教师",
+      "room_name": "示例教室",
+      "scheduled_time": "示例时段",
+      "source_url": "https://look.tongji.edu.cn/livingroom?course_id=sample&sub_id=sample&tenant_code=222",
+      "api_duration_seconds": 5547,
+      "media_duration_seconds": 5547.431771,
+      "video_list_shape": "object",
+      "video_id": "sample-video",
+      "time_offset": "0",
+      "is_m3u8": "no",
+      "enable_translation": 0,
+      "dom_caption_tracks": 0,
+      "download_url_is_http": false,
+      "course_teachers": [
+        "示例教师"
+      ]
+    }
+  ],
+  "document_head_probe": {
+    "status": 200,
+    "x_frame_options": "SAMEORIGIN",
+    "method": "unauthenticated HEAD to the sample livingroom URL"
+  },
+  "scope_limit": "Two course recordings only; no ASR accuracy benchmark, full-course download, signature expiry or browser-extension integration test"
+}
