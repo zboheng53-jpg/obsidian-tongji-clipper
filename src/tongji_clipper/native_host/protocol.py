@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import struct
 import sys
 from typing import Any, BinaryIO, Dict, Optional
@@ -11,6 +12,28 @@ from typing import Any, BinaryIO, Dict, Optional
 # Native Messaging limits: Chrome host output strictly limited to 1 MiB (1,048,576 bytes)
 MAX_INCOMING_MESSAGE_SIZE = 4 * 1024 * 1024  # 4 MiB
 MAX_OUTGOING_MESSAGE_SIZE = 1 * 1024 * 1024  # 1 MiB strictly per Chromium spec
+
+
+def native_pipe(stream_name: str) -> BinaryIO:
+    """Use inherited Windows pipes even when pythonw has no sys.std* streams."""
+    stream = getattr(sys, stream_name)
+    if stream is not None:
+        return stream.buffer
+    if os.name != "nt":
+        raise RuntimeError(f"Native messaging {stream_name} is unavailable")
+    import ctypes
+    from ctypes import wintypes
+    import msvcrt
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.GetStdHandle.argtypes = [wintypes.DWORD]
+    kernel32.GetStdHandle.restype = wintypes.HANDLE
+    handle = kernel32.GetStdHandle(-10 if stream_name == "stdin" else -11)
+    if not handle or handle == ctypes.c_void_p(-1).value:
+        raise RuntimeError(f"Native messaging {stream_name} pipe is unavailable")
+    mode = "rb" if stream_name == "stdin" else "wb"
+    flags = os.O_BINARY | (os.O_RDONLY if mode == "rb" else os.O_WRONLY)
+    return os.fdopen(msvcrt.open_osfhandle(handle, flags), mode, buffering=0)
 
 
 def read_exact_bytes(stream: BinaryIO, num_bytes: int) -> Optional[bytes]:
@@ -36,7 +59,7 @@ def read_message(stream: Optional[BinaryIO] = None) -> Optional[Dict[str, Any]]:
     Returns None on clean EOF.
     """
     if stream is None:
-        stream = sys.stdin.buffer
+        stream = native_pipe("stdin")
 
     # Read 4-byte little-endian length prefix
     length_bytes = read_exact_bytes(stream, 4)
@@ -63,7 +86,7 @@ def send_message(data: Dict[str, Any], stream: Optional[BinaryIO] = None) -> Non
     Guarantees stdout receives ONLY valid protocol bytes and does not exceed 1 MiB.
     """
     if stream is None:
-        stream = sys.stdout.buffer
+        stream = native_pipe("stdout")
 
     encoded = json.dumps(data, ensure_ascii=False).encode("utf-8")
     msg_length = len(encoded)

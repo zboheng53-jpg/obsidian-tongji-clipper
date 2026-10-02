@@ -85,6 +85,25 @@ def is_complete_model_dir(path: Path) -> bool:
     return False
 
 
+def find_local_model(name: str, cache_root: Optional[Path] = None) -> Optional[Path]:
+    """Resolve project models and HF snapshots, including the turbo repository."""
+    project_model = PROJECT_ROOT / "models" / f"faster-whisper-{name}"
+    if cache_root is None and is_complete_model_dir(project_model):
+        return project_model.resolve()
+    root = cache_root or get_models_cache_dir()
+    repos = [f"Systran/faster-whisper-{name}"]
+    if name in ("turbo", "large-v3-turbo"):
+        repos = ["mobiuslabsgmbh/faster-whisper-large-v3-turbo", "dropbox-dash/faster-whisper-large-v3-turbo"]
+    for repo in repos:
+        cache = root / ("models--" + repo.replace("/", "--"))
+        for snapshot in sorted((cache / "snapshots").glob("*")):
+            if is_complete_model_dir(snapshot):
+                return snapshot.resolve()
+        if is_complete_model_dir(cache) and (cache / "model.bin").is_file():
+            return cache.resolve()
+    return None
+
+
 class WorkerRequestHandler(BaseHTTPRequestHandler):
     server: WorkerServer  # Type hint
 
@@ -161,20 +180,9 @@ class WorkerRequestHandler(BaseHTTPRequestHandler):
 
         if path == "/system_info":
             # Discover local models using stable PROJECT_ROOT or HF cache
-            proj_model = PROJECT_ROOT / "models" / "faster-whisper-small"
-            cache_model = get_models_cache_dir() / "models--Systran--faster-whisper-small"
-            detected_model_path: Optional[Path] = None
-            if is_complete_model_dir(proj_model):
-                detected_model_path = proj_model.resolve()
+            detected_model_path = find_local_model("small") or find_local_model("large-v3-turbo")
+            if detected_model_path:
                 m_msg = f"本地项目内置模型已存在: {detected_model_path}"
-            elif is_complete_model_dir(cache_model):
-                snaps_dir = cache_model / "snapshots"
-                valid_snaps = [s for s in snaps_dir.iterdir() if s.is_dir() and is_complete_model_dir(s)] if snaps_dir.is_dir() else []
-                if valid_snaps:
-                    detected_model_path = valid_snaps[0].resolve()
-                else:
-                    detected_model_path = cache_model.resolve()
-                m_msg = f"本地缓存模型已存在: {detected_model_path}"
             else:
                 m_msg = "未安装本地模型（不默认承诺离线可用）"
 
@@ -376,9 +384,8 @@ class WorkerRequestHandler(BaseHTTPRequestHandler):
                 model_ok = is_complete_model_dir(candidate)
                 model_msg = "本地模型文件完整" if model_ok else f"本地模型路径不存在或文件不完整: {candidate}"
             elif cfg.offline:
-                cache_root = Path(cfg.model_dir) if cfg.model_dir else get_models_cache_dir()
-                candidate = cache_root / f"models--Systran--faster-whisper-{cfg.model}"
-                model_ok = is_complete_model_dir(candidate)
+                candidate = find_local_model(cfg.model, Path(cfg.model_dir) if cfg.model_dir else None)
+                model_ok = candidate is not None
                 model_msg = "离线模型缓存完整" if model_ok else f"预设模型离线缓存不存在或不完整: {candidate}；可改选本地模型绝对路径"
             else:
                 model_msg = "在线预设模型：首次运行可能需要下载，未联网校验远端可用性"
@@ -635,6 +642,12 @@ class WorkerRequestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/shutdown":
+            if body.get("only_if_idle") and any(
+                job["status"] in ("queued", "running", "pausing", "cancelling")
+                for job in self.server.db.list_jobs()
+            ):
+                self._send_json(HTTPStatus.CONFLICT, {"error": "请先暂停或取消活动任务，再停止后台。"})
+                return
             self._send_json(HTTPStatus.OK, {"status": "shutting_down"})
             threading.Thread(target=self.server.shutdown).start()
             return

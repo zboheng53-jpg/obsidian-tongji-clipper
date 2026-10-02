@@ -72,7 +72,22 @@ function handleNativeMessage(msg) {
     const req = pendingRequests.get(msg.request_id);
     clearTimeout(req.timer);
     pendingRequests.delete(msg.request_id);
+    if (chrome.storage && chrome.storage.local && !msg.error) {
+      if (["submit", "resume", "retry", "refresh_signature"].includes(req.action)) {
+        chrome.storage.local.set({ monitor_jobs: true });
+      } else if (req.action === "list_jobs" && Array.isArray(msg.jobs)) {
+        const active = msg.jobs.some((j) => ["queued", "running", "pausing", "cancelling"].includes(j.status));
+        chrome.storage.local.set({ monitor_jobs: active });
+      } else if (req.action === "shutdown") {
+        chrome.storage.local.set({ monitor_jobs: false });
+      }
+    }
     req.resolve(msg);
+    if (req.action === "shutdown" && !msg.error) {
+      const port = nativePort;
+      handleNativeDisconnect();
+      if (port && port.disconnect) port.disconnect();
+    }
     return;
   }
 
@@ -174,7 +189,7 @@ function pollJobsAndNotify() {
   if (isPollingJobs) return;
   isPollingJobs = true;
 
-  sendToNativeHost({ action: "list_jobs" })
+  sendToNativeHost({ action: "list_jobs", auto_start: false })
     .then((resp) => {
       if (!resp || !Array.isArray(resp.jobs)) return;
 
@@ -283,18 +298,25 @@ if (typeof chrome !== "undefined" && chrome.notifications && chrome.notification
   });
 }
 
+function pollIfMonitoring() {
+  if (!chrome.storage || !chrome.storage.local) return;
+  chrome.storage.local.get(["monitor_jobs"], (saved) => {
+    if (saved.monitor_jobs === true) pollJobsAndNotify();
+  });
+}
+
 if (typeof chrome !== "undefined" && chrome.alarms) {
   chrome.alarms.create("poll_jobs_alarm", { periodInMinutes: 0.5 });
   chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm && alarm.name === "poll_jobs_alarm") {
-      pollJobsAndNotify();
+      pollIfMonitoring();
     }
   });
 }
 
 if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onInstalled) {
   chrome.runtime.onInstalled.addListener(() => {
-    pollJobsAndNotify();
+    pollIfMonitoring();
   });
 }
 

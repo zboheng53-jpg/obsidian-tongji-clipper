@@ -500,6 +500,7 @@ if (submitBtn) {
               output_dir: settings.outputDir ? settings.outputDir.trim() : null,
               keep_audio: !!settings.keepAudio,
               resource_profile: settings.resourceProfile || "balanced",
+              hotwords: settings.hotwords || "",
             },
           };
 

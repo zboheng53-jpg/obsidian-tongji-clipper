@@ -707,6 +707,7 @@ class JobRunner:
                     chunk_overlap=config.chunk_overlap,
                     base_time_offset=time_offset,
                     language=config.language,
+                    hotwords=config.hotwords,
                     checkpoint_path=checkpoint_path,
                     on_progress=on_asr_progress,
                     check_cancelled=is_interrupted,

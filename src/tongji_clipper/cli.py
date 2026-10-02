@@ -61,6 +61,7 @@ def cmd_submit(args: argparse.Namespace) -> None:
         offline=args.offline,
         model_dir=args.model_dir,
         resource_profile=args.resource_profile,
+        hotwords=args.hotwords,
     )
 
     print(f"[CLI] 正在提交任务 (模型: {config.model}, 离线模式: {config.offline})...")
@@ -178,7 +179,7 @@ def cmd_worker(args: argparse.Namespace) -> None:
             from tongji_clipper.worker.server import run_server
             run_server(port=args.port)
     elif action == "stop":
-        res = send_worker_request("/shutdown", method="POST")
+        res = send_worker_request("/shutdown", method="POST", auto_start=False)
         if res.get("error"):
             print(f"停止失败: {res['error']}", file=sys.stderr)
             sys.exit(1)
@@ -231,6 +232,7 @@ def main() -> None:
     p_submit.add_argument("--title", default=None, help="课程标题（本地文件时可选）")
     p_submit.add_argument("--lecturer", default=None, help="主讲教师（本地文件时可选）")
     p_submit.add_argument("--keep-audio", action="store_true", help="保留提取的临时 16kHz WAV 音频文件")
+    p_submit.add_argument("--hotwords", default="", help="课程术语提示，例如：主矢、主矩、力系简化（不作强制替换）")
     p_submit.add_argument("--offline", action="store_true", help="强制离线模式（仅加载本地模型）")
     p_submit.add_argument("--watch", action="store_true", help="实时跟踪转写进度")
     p_submit.set_defaults(func=cmd_submit)

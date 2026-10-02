@@ -22,7 +22,18 @@ foreach ($key in $targets) {
     }
 }
 $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding utf8 | ConvertFrom-Json
-$manifest.path = Join-Path $scriptDir 'run-bridge.bat'
+$projectDir = Split-Path -Parent $scriptDir
+$hostPath = Join-Path $projectDir '.venv\Scripts\tongji-bridge.exe'
+if (-not (Test-Path -LiteralPath $hostPath)) {
+    throw 'Install the project into .venv first: uv pip install --python .venv\Scripts\python.exe -e ".[asr]"'
+}
+# A stale console entry point can recreate the Python window even with an .exe host.
+$hostBytes = [System.IO.File]::ReadAllBytes($hostPath)
+$peOffset = [System.BitConverter]::ToInt32($hostBytes, 0x3c)
+if ($peOffset -lt 0 -or $peOffset + 94 -gt $hostBytes.Length -or [System.BitConverter]::ToUInt16($hostBytes, $peOffset + 92) -ne 2) {
+    throw 'Host must be a GUI executable. Reinstall: uv pip install --python .venv\Scripts\python.exe -e ".[asr]"'
+}
+$manifest.path = $hostPath
 $existing = @($manifest.allowed_origins | Where-Object { $_ -match '^chrome-extension://[a-p]{32}/$' })
 $manifest.allowed_origins = @($existing + "chrome-extension://$ExtensionId/" | Select-Object -Unique)
 $json = $manifest | ConvertTo-Json -Depth 5

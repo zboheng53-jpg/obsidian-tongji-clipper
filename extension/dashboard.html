@@ -36,6 +36,7 @@
         <button id="btn-refresh-manual" class="btn btn-secondary" title="刷新任务状态与后台服务连通性">
           刷新 ↻
         </button>
+        <button id="btn-stop-worker" class="btn btn-secondary" title="停止本机后台服务；后续打开任务中心或提交任务时可重新启动">停止后台</button>
       </div>
     </div>
   </header>
@@ -115,7 +116,8 @@
                 <label for="radio-model-preset" class="model-option-label">使用内置推荐预设：</label>
                 <div class="model-option-input-wrap">
                   <select id="select-model-preset" aria-label="内置推荐预设模型下拉列表">
-                    <option value="small">small (推荐预设 · 通用平衡，CPU 运算友好)</option>
+                    <option value="large-v3-turbo">large-v3-turbo (大模型 · 可按课程对比，CPU 耗时更多)</option>
+                    <option value="small" selected>small (CPU 平衡 · 专业术语建议配合提示)</option>
                     <option value="base">base (轻量预设 · 转写快速，适合快速粗转)</option>
                     <option value="tiny">tiny (极速预设 · 资源消耗极低)</option>
                     <option value="medium">medium (高精预设 · 识别率高，需较多运算资源)</option>
@@ -191,6 +193,18 @@
         </div>
 
         <!-- Card 4: Actions & Config Validation -->
+        <div class="settings-card">
+          <div class="settings-card-header">
+            <h2 class="settings-card-title">中文与课程术语</h2>
+            <p class="settings-card-subtitle">中文输出自动统一为简体。术语提示帮助模型选择正确词组，不会强制替换老师原话。</p>
+          </div>
+          <div class="form-group">
+            <label for="input-hotwords" class="form-label">本课程术语提示（最多 500 字）：</label>
+            <input type="text" id="input-hotwords" maxlength="500" placeholder="例如：主矢、主矩、力系简化、平面力系">
+            <div class="form-help">按当前课程填写少量术语，用逗号分隔，例如：斜率、Canvas、力矩。保存后用于新任务；旧逐字稿需要重新提交课程才会重新识别。也可按课程比较不同模型；更大模型增加 CPU 耗时，仍可能有错词。</div>
+          </div>
+        </div>
+
         <div class="settings-card">
           <div class="settings-card-header">
             <h2 class="settings-card-title">保存与环境自检</h2>

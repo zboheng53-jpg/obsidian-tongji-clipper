@@ -11,16 +11,18 @@ requires-python = ">=3.11"
 authors = [
     { name = "Tongji Clipper Contributors" }
 ]
-dependencies = []
+dependencies = ["opencc-python-reimplemented>=0.1.7"]
 
 [project.optional-dependencies]
 asr = [
-    "faster-whisper>=1.0.0",
+    "faster-whisper>=1.2.1",
 ]
 
 [project.scripts]
 tongji-clipper = "tongji_clipper.cli:main"
 tongji-worker = "tongji_clipper.worker.server:main"
+
+[project.gui-scripts]
 tongji-bridge = "tongji_clipper.native_host.bridge:main"
 
 [tool.setuptools.packages.find]

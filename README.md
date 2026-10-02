@@ -4,6 +4,33 @@ Windows 本地逐字稿工具。当前代码包含持久队列、Chrome/Edge MV3
 
 **验收状态：** CLI、本地 worker 与真实短样本处理有既有验收记录；本轮任务中心在真实 Edge 浏览器中以合成夹具完成界面验收，并连到隔离 worker 验证了预览和重新导出。真实课程整节链路及本次更新后的用户浏览器安装尚未验收。
 
+## 后台窗口与中文识别修复（2026-10-03）
+
+- Windows 原生宿主改用 GUI 入口 `tongji-bridge.exe` / `pythonw.exe`，保留浏览器的二进制通信管道；worker、FFmpeg 和 ffprobe 不创建控制台窗口。
+- 空闲浏览器不再为了定时检查启动宿主和 worker；提交任务后才开启任务通知监测，活动任务结束后停止监测。“停止后台”会停止同步并关闭服务，不会被定时检查重新启动；有活动任务时请先暂停或取消。
+- 中文结果用 OpenCC `t2s` 统一为简体。JSON 的 `raw_text` 和断点的 `raw_chunks` 保留模型原文；繁简转换不修改时间轴或强制替换同音字。
+- 设置新增 `large-v3-turbo` 大模型预设，以及可留空的课程术语提示（例如“斜率、Canvas、力矩”）。保留既有 small 默认与用户设置：实际短样本中 turbo 未稳定改善专业术语，因此不自动升级；可按具体课程对比选择。
+- 修改模型、术语或识别流程会生成不同任务，不会复用旧版本的错误逐字稿。已完成的原稿保留，重新提交课程可重新识别；“重新导出”仍复用原识别结果。
+
+更新 Python 安装后重新注册宿主，再在 `edge://extensions/` 或 `chrome://extensions/` 重新加载扩展。安装只下载软件依赖与所选模型，课程录音在本机处理：
+
+```powershell
+uv pip install --python .venv\Scripts\python.exe -e ".[asr]"
+powershell -ExecutionPolicy Bypass -File scripts\register-host.ps1 -ExtensionId <32位扩展ID>
+# 可选：先下载质量优先模型，之后可严格离线使用（约 1.6 GB）
+.venv\Scripts\python.exe -c "from faster_whisper import download_model; download_model('large-v3-turbo', output_dir='models/faster-whisper-large-v3-turbo')"
+```
+
+模型依据：[Whisper large-v3-turbo 模型说明](https://huggingface.co/openai/whisper-large-v3-turbo)、[CTranslate2 权重](https://huggingface.co/dropbox-dash/faster-whisper-large-v3-turbo)。更大模型在 CPU 上会增加耗时，不能保证每门课都更准。短样本与术语改善不代表整节课准确率。无人工参考稿时不报告 CER；英文名称和公式符号仍需对照录音、课件复核。
+
+本轮 30 秒本机课堂样本中，small 加入力学术语提示后输出了“主矢”和“主矩”，替代旧结果中的“主使”和“主剧”，但其他疑似错词仍存在，片尾识别也发生变化。turbo 未稳定识别这些术语，因此仅提供为可选模型。最终版本 95 项 Python 回归、扩展接口夹具、真实无窗口宿主管道和真实 Edge 任务中心的保存／停止服务集成检查通过。
+
+本机短样本对比可复现如下；结果默认写到忽略的 `.runtime/`，不会覆盖旧基线或原逐字稿：
+
+```powershell
+.venv\Scripts\python.exe -X utf8 scripts\validate-asr-quality.py --audio artifacts\probe\sample-120-30s-6ccc3a53.wav --baseline-model models\faster-whisper-small --model models\faster-whisper-large-v3-turbo
+```
+
 ## 当前机器快速使用
 
 项目已有 `.venv`、FFmpeg/ffprobe 和本地模型 `models/faster-whisper-small`。在本目录运行：
@@ -29,6 +56,7 @@ Windows 本地逐字稿工具。当前代码包含持久队列、Chrome/Edge MV3
 
 - 扩展弹窗用于确认当前课程并提交；点击“任务中心”打开常驻管理页面，查看完整任务列表、搜索和状态筛选。
 - 在任务中心设置模型、离线模式、资源档位、输出目录与保留音频策略。本地模型路径与预设模型互斥；配置自检会检查运行依赖、模型和目录可写性。
+- 可按课程比较模型；术语提示用于少量本课程词汇，不能保证识别正确，也不会对逐字稿作全局替换。
 - 已验证音频保存完成后，界面才提示可关闭课程页。关闭弹窗、切换软件不会停止独立 worker；电脑睡眠或关机不能继续计算。
 - “正在取消／正在暂停”表示请求已收到、执行尚在退出。底层模型加载和单次推理不能保证瞬时中断，界面确认终态后才代表停止。暂停保留完整分块断点；未完成块在恢复时重新处理。
 - 失败或取消后可直接重试，已验证缓存可复用；媒体地址失效时打开课程页刷新，再从弹窗重新提交。

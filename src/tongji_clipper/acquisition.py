@@ -55,7 +55,8 @@ def probe_audio(file_path: str) -> Dict[str, float]:
     ]
 
     try:
-        res = subprocess.run(args, capture_output=True, text=True, check=True)
+        res = subprocess.run(args, capture_output=True, text=True, check=True,
+                             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
         info = json.loads(res.stdout)
     except subprocess.CalledProcessError as e:
         raise AcquisitionError(f"ffprobe failed: {e.stderr}") from e
@@ -155,6 +156,7 @@ def extract_pcm_wav(
             stderr=stderr_file,
             text=True,
             errors="replace",
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
 
         if process_holder is not None:

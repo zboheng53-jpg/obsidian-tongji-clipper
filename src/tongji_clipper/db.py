@@ -144,7 +144,10 @@ class Database:
                     (capture.tenant_code, capture.course_id, capture.sub_id, stream_id),
                 ).fetchall()
                 for candidate in candidates:
-                    old_config = JobConfig.from_dict(json.loads(candidate["config_json"]))
+                    old_config_data = json.loads(candidate["config_json"])
+                    if old_config_data.get("asr_revision") != config.asr_revision:
+                        continue
+                    old_config = JobConfig.from_dict(old_config_data)
                     identity_args = dict(tenant_code=capture.tenant_code, course_id=capture.course_id,
                                          sub_id=capture.sub_id, stream_id=stream_id,
                                          time_offset=target_stream.time_offset, config=old_config,

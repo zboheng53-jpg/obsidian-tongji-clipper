@@ -23,7 +23,7 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
         try {const data = JSON.parse(line); if (data.url) {clearTimeout(timer); resolve(data);}} catch {}
       });
     });
-    const routes = {system_info: '/system_info', list_jobs: '/jobs', preview: '/preview', export: '/export', cleanup_cache: '/cleanup_cache', validate_config: '/validate_config', pause: '/pause', resume: '/resume', retry: '/retry', cancel: '/cancel'};
+    const routes = {system_info: '/system_info', list_jobs: '/jobs', preview: '/preview', export: '/export', cleanup_cache: '/cleanup_cache', validate_config: '/validate_config', pause: '/pause', resume: '/resume', retry: '/retry', cancel: '/cancel', shutdown: '/shutdown'};
     const calls = [];
     browser = await chromium.launch({headless: true, ...(process.env.BROWSER_EXECUTABLE ? {executablePath: process.env.BROWSER_EXECUTABLE} : {})});
     const page = await browser.newPage({viewport: {width: 1280, height: 900}});
@@ -40,6 +40,7 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     });
     await page.addInitScript(() => {
       const storage = {};
+      window.__fixtureStorage = storage;
       window.chrome = {
         runtime: {id: 'fixture', getURL: value => new URL(value, location.href).href, sendMessage: (message, callback) => {window.__fixtureNative(message.payload).then(callback).catch(error => callback({error: error.message}));}},
         storage: {local: {get: (keys, callback) => {const value = Object.fromEntries(keys.filter(key => key in storage).map(key => [key, storage[key]])); if (callback) callback(value); return Promise.resolve(value);}, set: (values, callback) => {Object.assign(storage, values); if (callback) callback(); return Promise.resolve();}}, onChanged: {addListener() {}}},
@@ -58,8 +59,19 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.ok(calls.some(call => call.action === 'export' && call.output_dir === fixture.export_dir));
     const fs = require('node:fs');
     assert.ok(fs.readdirSync(fixture.export_dir).some(name => name.endsWith('.md')), 're-export must create a real Markdown artifact');
+    await page.locator('#tab-btn-settings').click();
+    await page.locator('#input-hotwords').fill('斜率、Canvas、力矩');
+    await page.locator('#btn-save-settings').click();
+    await page.waitForFunction(() => window.__fixtureStorage.hotwords === '斜率、Canvas、力矩');
+    assert.ok(await page.locator('#select-model-preset option[value="large-v3-turbo"]').count());
+    await page.locator('#btn-stop-worker').click();
+    await page.waitForFunction(() => document.querySelector('#worker-badge').textContent === '后台已停止');
+    const callsAfterStop = calls.length;
+    await page.waitForTimeout(2200);
+    assert.equal(calls.length, callsAfterStop, 'Stopped dashboard must not restart worker by polling');
+    assert.ok(calls.some(call => call.action === 'shutdown' && call.only_if_idle === true));
     assert.deepEqual(errors, []);
-    console.log('Real dashboard → worker → actual transcript preview and revision-safe re-export passed.');
+    console.log('Real dashboard → worker: preview, re-export, glossary persistence and stop without automatic restart passed.');
   } finally {
     if (browser) await browser.close();
     child.stdin.end('\n');

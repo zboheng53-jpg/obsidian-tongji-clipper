@@ -2,7 +2,7 @@
  * Shared Client Utilities for Tongji Clipper Extension UI (Popup & Dashboard)
  */
 
-const PRESET_MODELS = ["small", "base", "tiny", "medium"];
+const PRESET_MODELS = ["small", "base", "tiny", "medium", "large-v3-turbo"];
 
 const JOB_STATUS_LABELS = {
   queued: "排队等待",
@@ -98,6 +98,7 @@ function resolveSettings(saved = {}, defaults = {}) {
 
   const resourceProfile =
     saved.resourceProfile || defaults.resource_profile || "balanced";
+  const hotwords = typeof saved.hotwords === "string" ? saved.hotwords.trim() : "";
 
   // Compute effective actual model and validation
   let actualModel = null;
@@ -123,6 +124,7 @@ function resolveSettings(saved = {}, defaults = {}) {
     outputDir,
     keepAudio,
     resourceProfile,
+    hotwords,
     actualModel,
     isValid,
     validationError,
@@ -145,6 +147,7 @@ function loadAndInitializeSettings() {
         "outputDir",
         "keepAudio",
         "resourceProfile",
+        "hotwords",
         "settings_initialized",
       ],
       (saved) => {
@@ -175,6 +178,7 @@ function loadAndInitializeSettings() {
                 outputDir: resolved.outputDir,
                 keepAudio: resolved.keepAudio,
                 resourceProfile: resolved.resourceProfile,
+                hotwords: resolved.hotwords,
                 settings_initialized: true,
               },
               () => {

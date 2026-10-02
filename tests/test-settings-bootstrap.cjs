@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const {loadAndInitializeSettings} = require('../extension/common-client.js');
+const {loadAndInitializeSettings, resolveSettings} = require('../extension/common-client.js');
 
 (async () => {
   let stored = {};
@@ -22,5 +22,7 @@ const {loadAndInitializeSettings} = require('../extension/common-client.js');
   stored.isOffline = false;
   response = {error: 'backend unavailable'};
   assert.equal((await loadAndInitializeSettings()).isOffline, false);
+  assert.equal(resolveSettings({modelSource:'preset',model:'large-v3-turbo',hotwords:'  Canvas、斜率  '}).actualModel, 'large-v3-turbo');
+  assert.equal(resolveSettings({hotwords:'  Canvas、斜率  '}).hotwords, 'Canvas、斜率');
   console.log('Settings bootstrap retries after unavailable backend and preserves explicit settings.');
 })().catch(error => {console.error(error); process.exitCode = 1;});

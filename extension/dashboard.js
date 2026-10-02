@@ -9,6 +9,7 @@ let currentSearch = "";
 let pollTimer = null;
 let isRefreshing = false;
 let pendingActionJobId = null;
+let workerStopped = false;
 
 // Modal accessibility state
 let activeModal = null;
@@ -48,6 +49,7 @@ const elements = {
   chkOffline: document.getElementById("chk-offline"),
   inputOutputDir: document.getElementById("input-output-dir"),
   chkKeepAudio: document.getElementById("chk-keep-audio"),
+  inputHotwords: document.getElementById("input-hotwords"),
   btnSaveSettings: document.getElementById("btn-save-settings"),
   btnValidateConfig: document.getElementById("btn-validate-config"),
   saveStatusText: document.getElementById("save-status-text"),
@@ -285,6 +287,7 @@ elements.selectResourceProfile.addEventListener("change", autoSaveSettings);
 elements.chkOffline.addEventListener("change", autoSaveSettings);
 elements.inputOutputDir.addEventListener("input", autoSaveSettings);
 elements.chkKeepAudio.addEventListener("change", autoSaveSettings);
+elements.inputHotwords?.addEventListener("input", autoSaveSettings);
 
 // Settings Persistence & Initialization
 function loadSettings() {
@@ -305,6 +308,7 @@ function loadSettings() {
       "outputDir",
       "keepAudio",
       "resourceProfile",
+      "hotwords",
     ],
     (saved) => {
       const resolved = typeof resolveSettings === "function" ? resolveSettings(saved, {}) : saved;
@@ -323,6 +327,7 @@ function applySettingsToUI(resolved) {
   elements.chkOffline.checked = !!resolved.isOffline;
   elements.inputOutputDir.value = resolved.outputDir || "";
   elements.chkKeepAudio.checked = !!resolved.keepAudio;
+  if (elements.inputHotwords) elements.inputHotwords.value = resolved.hotwords || "";
 
   updateModelChoiceUI();
 }
@@ -355,6 +360,7 @@ function saveSettingsInternal(showFeedback = true) {
     outputDir: elements.inputOutputDir.value.trim(),
     keepAudio: elements.chkKeepAudio.checked,
     resourceProfile: elements.selectResourceProfile.value,
+    hotwords: elements.inputHotwords?.value.trim() || "",
     settings_initialized: true,
   };
 
@@ -396,6 +402,7 @@ elements.btnValidateConfig.addEventListener("click", () => {
     output_dir: elements.inputOutputDir.value.trim() || null,
     keep_audio: elements.chkKeepAudio.checked,
     resource_profile: elements.selectResourceProfile.value,
+    hotwords: elements.inputHotwords?.value.trim() || "",
   };
 
   elements.btnValidateConfig.disabled = true;
@@ -1195,22 +1202,40 @@ function refreshTasksList() {
 }
 
 elements.btnRefreshManual.addEventListener("click", () => {
+  workerStopped = false;
   updateWorkerStatus();
   refreshTasksList();
+});
+
+document.getElementById("btn-stop-worker")?.addEventListener("click", async () => {
+  if (allJobs.some((job) => ["running", "queued", "pausing", "cancelling"].includes(job.status))) {
+    showToast("请先暂停或取消活动任务，待状态确认后再停止后台。", true);
+    return;
+  }
+  workerStopped = true;
+  const response = await sendNativeAction({ action: "shutdown", only_if_idle: true });
+  if (response.error) {
+    workerStopped = false;
+    showToast(`停止失败：${response.error}`, true);
+    return;
+  }
+  elements.workerBadge.textContent = "后台已停止";
+  elements.syncStatusIndicator.textContent = "已停止同步；点击刷新可重新启动";
+  showToast("后台已停止；点击刷新或提交任务可重新启动。");
 });
 
 // Visibility handling: 2 seconds refresh when visible, pause when hidden
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(() => {
-    if (!document.hidden && elements.paneTasks.classList.contains("active")) {
+    if (!workerStopped && !document.hidden && elements.paneTasks.classList.contains("active")) {
       refreshTasksList();
     }
   }, 2000);
 }
 
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) {
+  if (!workerStopped && !document.hidden) {
     refreshTasksList();
     updateWorkerStatus();
   }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from functools import lru_cache
 import json
 import logging
 import os
@@ -12,8 +13,20 @@ import time
 from typing import Any, Callable, Dict, Generator, List, Optional, Tuple
 
 from tongji_clipper.config import get_models_cache_dir
+from tongji_clipper.models import ASR_REVISION
 
 logger = logging.getLogger(__name__)
+
+def simplify_chinese(text: str, language: str) -> str:
+    if language != "zh":
+        return text
+    return _chinese_converter().convert(text)
+
+
+@lru_cache(maxsize=1)
+def _chinese_converter():
+    from opencc import OpenCC
+    return OpenCC("t2s")
 
 
 def clean_text_for_comparison(text: str) -> str:
@@ -80,6 +93,7 @@ class ASREngine:
         self.device = device
         self.compute_type = compute_type
         self.download_root = download_root or str(get_models_cache_dir())
+        self._prefer_bundled = download_root is None
         self.offline = offline
         self.cpu_threads = max(1, int(cpu_threads))
         self.idle_timeout_sec = float(idle_timeout_sec)
@@ -121,11 +135,17 @@ class ASREngine:
                 "faster-whisper is not installed. Please install it with 'pip install faster-whisper'."
             )
 
+        model_source = self.model_name
+        # Presets can use project-installed weights in strict offline mode too.
+        bundled = Path(__file__).resolve().parents[2] / "models" / f"faster-whisper-{self.model_name}"
+        if self._prefer_bundled and (bundled / "model.bin").is_file() and (bundled / "config.json").is_file():
+            model_source = str(bundled)
+
         if self.offline:
             logger.info("Loading model '%s' in strict offline mode (local_files_only=True, cpu_threads=%d)", self.model_name, self.cpu_threads)
             try:
                 self._model = WhisperModel(
-                    self.model_name,
+                    model_source,
                     device=self.device,
                     compute_type=self.compute_type,
                     download_root=self.download_root,
@@ -138,10 +158,10 @@ class ASREngine:
                 ) from e
             return
 
-        print(f"[Tongji Clipper] 正在加载/检查 Faster-Whisper 模型 '{self.model_name}' (CPU {self.compute_type}, threads={self.cpu_threads})...")
+        logger.info("正在加载/检查 Faster-Whisper 模型 '%s' (%s %s, threads=%d)", self.model_name, self.device, self.compute_type, self.cpu_threads)
         try:
             self._model = WhisperModel(
-                self.model_name,
+                model_source,
                 device=self.device,
                 compute_type=self.compute_type,
                 download_root=self.download_root,
@@ -158,6 +178,7 @@ class ASREngine:
         end_sec: float,
         language: str = "zh",
         check_cancelled: Optional[Callable[[], bool]] = None,
+        hotwords: str = "",
     ) -> List[Dict[str, Any]]:
         """Transcribes a specific audio slice and returns relative segments."""
         self.last_active_time = time.time()
@@ -208,6 +229,7 @@ class ASREngine:
                 language=language,
                 vad_filter=True,
                 beam_size=5,
+                hotwords=hotwords or None,
             )
 
             results = []
@@ -238,9 +260,10 @@ class ASREngine:
         base_time_offset: float = 0.0,
         total_duration: float = 0.0,
         audio_hash_hex: str = "",
+        hotwords: str = "",
     ) -> str:
         checkpoint_model_sig = f"{self.model_name}:{self.device}:{self.compute_type}:{self.download_root}:{self.offline}"
-        config_seed = f"{checkpoint_model_sig}:{language}:{chunk_duration}:{chunk_overlap}:{base_time_offset}:{total_duration}:{audio_hash_hex}"
+        config_seed = f"{checkpoint_model_sig}:{language}:{chunk_duration}:{chunk_overlap}:{base_time_offset}:{total_duration}:{audio_hash_hex}:{ASR_REVISION}:{hotwords}"
         return hashlib.sha256(config_seed.encode("utf-8")).hexdigest()[:16]
 
     def transcribe_audio_stream(
@@ -254,6 +277,7 @@ class ASREngine:
         checkpoint_path: Optional[str] = None,
         on_progress: Optional[Callable[[int, int, str], None]] = None,
         check_cancelled: Optional[Callable[[], bool]] = None,
+        hotwords: str = "",
     ) -> List[Dict[str, Any]]:
         """
         Processes audio in ~5min chunks with overlap deduplication.
@@ -280,6 +304,7 @@ class ASREngine:
             base_time_offset=base_time_offset,
             total_duration=total_duration,
             audio_hash_hex=audio_hash.hexdigest(),
+            hotwords=hotwords,
         )
 
         curr_start = 0.0
@@ -329,6 +354,7 @@ class ASREngine:
                 end_sec=curr_end,
                 language=language,
                 check_cancelled=check_cancelled,
+                hotwords=hotwords,
             )
 
             # Record raw chunk record
@@ -347,12 +373,18 @@ class ASREngine:
             prev_chunk_segs = [s for s in all_segments if s["start"] < overlap_window_end]
 
             for s in chunk_segments:
-                global_start = curr_start + s["start"] + base_time_offset
-                global_end = curr_start + s["end"] + base_time_offset
+                # Whisper can predict timestamps past the supplied audio slice.
+                relative_start = max(0.0, float(s["start"]))
+                relative_end = min(curr_end - curr_start, float(s["end"]))
+                if relative_end <= relative_start:
+                    continue
+                global_start = curr_start + relative_start + base_time_offset
+                global_end = curr_start + relative_end + base_time_offset
                 global_seg = {
                     "start": round(global_start, 2),
                     "end": round(global_end, 2),
-                    "text": s["text"],
+                    "text": simplify_chinese(s["text"], language),
+                    "raw_text": s.get("raw_text", s["text"]),
                 }
 
                 for metric in ("avg_logprob", "no_speech_prob"):

@@ -94,6 +94,8 @@ def build_markdown(
         f"device: {json.dumps(config.get('device', 'cpu'), ensure_ascii=False)}",
         f"compute_type: {json.dumps(config.get('compute_type', 'int8'), ensure_ascii=False)}",
         f"offline: {json.dumps(bool(config.get('offline', False)))}",
+        f"asr_revision: {json.dumps(config.get('asr_revision', 1))}",
+        f"hotwords: {json.dumps(config.get('hotwords', ''), ensure_ascii=False)}",
         f"acquisition_seconds: {timings.get('acquisition', 0.0):.2f}",
         f"asr_seconds: {timings.get('asr', 0.0):.2f}",
         f"export_seconds: {timings.get('export', 0.0):.2f}",

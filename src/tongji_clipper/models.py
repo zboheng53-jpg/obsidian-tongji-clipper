@@ -13,6 +13,8 @@ from urllib.parse import parse_qs, urlparse
 
 from tongji_clipper.config import assert_safe_id, sanitize_url
 
+ASR_REVISION = 2
+
 
 class JobStatus(str, Enum):
     QUEUED = "queued"
@@ -242,8 +244,13 @@ class JobConfig:
     model_dir: Optional[str] = None
     output_dir: Optional[str] = None
     resource_profile: str = "balanced"
+    hotwords: str = ""
+    asr_revision: int = dataclasses.field(default=ASR_REVISION, init=False)
 
     def __post_init__(self) -> None:
+        if not isinstance(self.hotwords, str) or len(self.hotwords) > 500:
+            raise ValueError("课程术语提示须为文本，最多 500 字")
+        self.hotwords = self.hotwords.strip()
         if not math.isfinite(self.chunk_duration) or self.chunk_duration <= 0:
             raise ValueError("chunk_duration must be positive and finite")
         if not math.isfinite(self.chunk_overlap) or not 0 <= self.chunk_overlap < self.chunk_duration:
@@ -268,6 +275,7 @@ class JobConfig:
             model_dir=data.get("model_dir"),
             output_dir=data.get("output_dir"),
             resource_profile=str(data.get("resource_profile", "balanced")),
+            hotwords=data.get("hotwords", ""),
         )
 
 
@@ -295,7 +303,8 @@ def compute_idempotency_key(
         f"{tenant_code}:{course_id}:{sub_id}:{stream_id}:{time_offset:.3f}:"
         f"{config.model}:{config.device}:{config.compute_type}:{config.language}:"
         f"{config.chunk_duration:.1f}:{config.chunk_overlap:.1f}:"
-        f"{config.model_dir}:{config.offline}{local_part}"
+        f"{config.model_dir}:{config.offline}{local_part}:"
+        f"{config.asr_revision}:{config.hotwords}"
     )
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()
 

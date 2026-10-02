@@ -21,6 +21,8 @@ const vm = require("node:vm");
   let nativeMessageListeners = [];
   let nativeDisconnectListeners = [];
   let runtimeMessageListeners = [];
+  let alarmListener;
+  let installedListener;
   let postedNativeMessages = [];
   let storageState = {};
   let createdNotifications = [];
@@ -58,7 +60,7 @@ const vm = require("node:vm");
           runtimeMessageListeners.push(fn);
         },
       },
-      onInstalled: { addListener() {} },
+      onInstalled: { addListener(fn) { installedListener = fn; } },
     },
     storage: {
       local: {
@@ -91,7 +93,7 @@ const vm = require("node:vm");
     },
     alarms: {
       create() {},
-      onAlarm: { addListener() {} },
+      onAlarm: { addListener(fn) { alarmListener = fn; } },
     },
   };
 
@@ -310,6 +312,36 @@ const vm = require("node:vm");
   assert.equal(currentBadge.text, "");
   console.log("✓ Action badge display states passed");
 
+  // Browser startup and an idle alarm must not launch a native process.
+  bg.resetState();
+  storageState = {};
+  postedNativeMessages = [];
+  installedListener();
+  alarmListener({ name: "poll_jobs_alarm" });
+  assert.equal(postedNativeMessages.length, 0);
+  storageState.monitor_jobs = true;
+  alarmListener({ name: "poll_jobs_alarm" });
+  assert.equal(postedNativeMessages.length, 1);
+  const monitored = postedNativeMessages[0];
+  assert.equal(monitored.auto_start, false);
+  bg.handleNativeMessage({ request_id: monitored.request_id, jobs: [] });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(storageState.monitor_jobs, false);
+  alarmListener({ name: "poll_jobs_alarm" });
+  assert.equal(postedNativeMessages.length, 1);
+
+  const submitted = bg.sendToNativeHost({ action: "submit" });
+  const submitMessage = postedNativeMessages.at(-1);
+  bg.handleNativeMessage({ request_id: submitMessage.request_id, status: "ok" });
+  await submitted;
+  assert.equal(storageState.monitor_jobs, true);
+  const stopped = bg.sendToNativeHost({ action: "shutdown" });
+  const stopMessage = postedNativeMessages.at(-1);
+  bg.handleNativeMessage({ request_id: stopMessage.request_id, status: "shutting_down" });
+  await stopped;
+  assert.equal(storageState.monitor_jobs, false);
+  assert.equal(bg.getPendingRequests().size, 0);
+  console.log("✓ Idle startup, active monitoring and shutdown behavior verified");
   console.log("All background messaging tests passed successfully!");
 })().catch((err) => {
   console.error("Test failed:", err);

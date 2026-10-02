@@ -111,10 +111,14 @@ def ensure_worker_running(max_wait_sec: float = 6.0) -> Dict[str, Any]:
     # Spawn worker detached on Windows
     creationflags = 0
     if os.name == "nt":
-        # DETACHED_PROCESS = 0x00000008, CREATE_NEW_PROCESS_GROUP = 0x00000200
-        creationflags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        creationflags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
 
-    cmd = [sys.executable, "-m", "tongji_clipper.worker.server"]
+    worker_python = sys.executable
+    if os.name == "nt":
+        pythonw = Path(sys.executable).with_name("pythonw.exe")
+        if pythonw.is_file():
+            worker_python = str(pythonw)
+    cmd = [worker_python, "-m", "tongji_clipper.worker.server"]
     subprocess.Popen(
         cmd,
         creationflags=creationflags,
@@ -145,8 +149,14 @@ def send_worker_request(
     method: str = "GET",
     body: Optional[Dict[str, Any]] = None,
     _retry_auth: bool = True,
+    auto_start: bool = True,
 ) -> Dict[str, Any]:
-    worker_info = ensure_worker_running()
+    if auto_start:
+        worker_info = ensure_worker_running()
+    else:
+        worker_info = load_worker_info()
+        if not worker_info or not ping_worker(int(worker_info["port"]), worker_info.get("token"), worker_info.get("pid")):
+            return {"status": "stopped", "jobs": []}
     port = int(worker_info["port"])
     token = worker_info["token"]
 
@@ -165,7 +175,7 @@ def send_worker_request(
             resp_body = resp.read().decode("utf-8")
             return json.loads(resp_body)
     except urllib.error.HTTPError as e:
-        if e.code == 401 and _retry_auth:
+        if e.code == 401 and _retry_auth and auto_start:
             logger.warning(
                 "Worker returned 401 Unauthorized for token. Attempting automatic recovery..."
             )
@@ -223,7 +233,10 @@ def handle_client_message(msg: Dict[str, Any]) -> Dict[str, Any]:
         if "offset" in msg:
             params.append(f"offset={msg['offset']}")
         qs = f"?{'&'.join(params)}" if params else ""
-        return send_worker_request(f"/jobs{qs}", method="GET")
+        return send_worker_request(f"/jobs{qs}", method="GET", auto_start=msg.get("auto_start", True))
+
+    if action == "shutdown":
+        return send_worker_request("/shutdown", method="POST", body={"only_if_idle": bool(msg.get("only_if_idle", False))}, auto_start=False)
 
     if action == "status":
         job_id = msg.get("job_id", "")
@@ -300,10 +313,14 @@ def handle_client_message(msg: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def main() -> None:
+    from tongji_clipper.native_host.protocol import native_pipe
+    # Open once: repeatedly wrapping the same Windows handle would close the pipe.
+    input_pipe = native_pipe("stdin")
+    output_pipe = native_pipe("stdout")
     logger.info("Native messaging bridge started.")
     while True:
         try:
-            msg = read_message()
+            msg = read_message(stream=input_pipe)
         except Exception as e:
             logger.exception("Failed reading message from pipe: %s", e)
             break
@@ -319,7 +336,7 @@ def main() -> None:
                 response = {"status": "ok", "result": response}
             if isinstance(msg, dict) and "request_id" in msg:
                 response["request_id"] = msg["request_id"]
-            send_message(response)
+            send_message(response, stream=output_pipe)
             logger.info("Sent response for action: %s (req_id: %s)", msg.get("action"), msg.get("request_id"))
         except Exception as e:
             logger.exception("Bridge encountered error handling message: %s", e)
@@ -327,7 +344,7 @@ def main() -> None:
                 err_resp: Dict[str, Any] = {"error": f"Bridge error: {e}"}
                 if isinstance(msg, dict) and "request_id" in msg:
                     err_resp["request_id"] = msg["request_id"]
-                send_message(err_resp)
+                send_message(err_resp, stream=output_pipe)
             except Exception:
                 pass
 
