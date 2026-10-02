@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "同济大学Look平台课程音视频逐字稿本地采集与转写扩展",
   "permissions": [
+    "tabs",
     "activeTab",
     "scripting",
     "nativeMessaging",

@@ -22,11 +22,15 @@ from tongji_clipper.config import (
 )
 from tongji_clipper.native_host.protocol import read_message, send_message
 
-# Bridge logs strictly to stderr or log file, NEVER stdout!
+class FlushFileHandler(RotatingFileHandler):
+    def emit(self, record):
+        super().emit(record)
+        self.flush()
+
 log_file = get_app_dir() / "bridge.log"
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-log_handler = RotatingFileHandler(str(log_file), maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8")
+log_handler = FlushFileHandler(str(log_file), maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8")
 log_formatter = logging.Formatter("[%(asctime)s] [%(levelname)s] (bridge) %(message)s")
 log_handler.setFormatter(log_formatter)
 logger.addHandler(log_handler)
@@ -198,6 +202,10 @@ def handle_client_message(msg: Dict[str, Any]) -> Dict[str, Any]:
         worker_info = ensure_worker_running()
         return {"status": "ok", "worker_pid": worker_info.get("pid"), "port": worker_info.get("port")}
 
+    if action == "client_log":
+        logger.info("BATCH_LOG: %s", msg.get("message"))
+        return {"status": "ok"}
+
     if action == "submit":
         payload = msg.get("payload", {})
         stream_id = msg.get("stream_id", "")
@@ -304,6 +312,7 @@ def main() -> None:
             logger.info("Native messaging client closed pipe. Exiting bridge.")
             break
 
+        logger.info("Received message action: %s", msg.get("action") if isinstance(msg, dict) else msg)
         try:
             response = handle_client_message(msg)
             if not isinstance(response, dict):
@@ -311,6 +320,7 @@ def main() -> None:
             if isinstance(msg, dict) and "request_id" in msg:
                 response["request_id"] = msg["request_id"]
             send_message(response)
+            logger.info("Sent response for action: %s (req_id: %s)", msg.get("action"), msg.get("request_id"))
         except Exception as e:
             logger.exception("Bridge encountered error handling message: %s", e)
             try:
