@@ -50,7 +50,11 @@ class TestWorkerAPI(unittest.TestCase):
             with urllib.request.urlopen(req) as resp:
                 return resp.status, json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
-            return e.code, json.loads(e.read().decode("utf-8"))
+            try:
+                raw = e.read() if e.fp else b"{}"
+                return e.code, json.loads(raw.decode("utf-8"))
+            except (ConnectionResetError, ConnectionAbortedError, OSError, json.JSONDecodeError):
+                return e.code, {"error": "Connection closed by server"}
         except (ConnectionResetError, ConnectionAbortedError, urllib.error.URLError):
             return 413, {"error": "Connection reset by server due to payload size"}
 
@@ -58,6 +62,27 @@ class TestWorkerAPI(unittest.TestCase):
         status, data = self._request("/health")
         self.assertEqual(status, 200)
         self.assertEqual(data.get("status"), "ok")
+
+    def test_health_check_with_valid_and_invalid_token(self):
+        status, data = self._request("/health", token=self.token)
+        self.assertEqual(status, 200)
+        self.assertEqual(data.get("status"), "ok")
+
+        status, data = self._request("/health", token="INVALID_TOKEN")
+        self.assertEqual(status, 401)
+
+    def test_ping_worker_with_token_and_pid(self):
+        from tongji_clipper.native_host.bridge import ping_worker
+        import os
+
+        # Valid port, valid token, valid expected_pid
+        self.assertTrue(ping_worker(self.port, token=self.token, expected_pid=os.getpid()))
+
+        # Invalid token
+        self.assertFalse(ping_worker(self.port, token="WRONG_TOKEN"))
+
+        # Wrong PID
+        self.assertFalse(ping_worker(self.port, token=self.token, expected_pid=99999999))
 
     def test_unauthorized_access_rejected(self):
         # Missing auth header

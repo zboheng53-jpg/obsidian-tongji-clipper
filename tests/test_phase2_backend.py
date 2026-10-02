@@ -619,6 +619,52 @@ class TestPhase2Backend(unittest.TestCase):
         (m_dir / "model.bin").write_bytes(b"\x00" * 60000)  # ~60KB
         self.assertTrue(is_complete_model_dir(m_dir))
 
+    # 13. Bridge auto-recovery when encountering 401
+    def test_bridge_send_worker_request_401_recovery(self):
+        from tongji_clipper.native_host.bridge import send_worker_request
+        import urllib.error
+
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["TONGJI_CLIPPER_HOME"] = td
+            from tongji_clipper.config import save_worker_info
+
+            # Save initial worker info with wrong token
+            save_worker_info(port=48721, pid=9999, token="STALE_TOKEN")
+
+            call_count = 0
+
+            def fake_ensure():
+                nonlocal call_count
+                if call_count > 0:
+                    return {"port": 48721, "pid": 10000, "token": "FRESH_TOKEN"}
+                return {"port": 48721, "pid": 9999, "token": "STALE_TOKEN"}
+
+            def fake_urlopen(req, timeout=10.0):
+                nonlocal call_count
+                call_count += 1
+                auth = req.headers.get("Authorization")
+                if auth != "Bearer FRESH_TOKEN":
+                    import io
+                    fp = io.BytesIO(b'{"error": "Unauthorized"}')
+                    raise urllib.error.HTTPError(req.full_url, 401, "Unauthorized", {}, fp)
+                
+                class FakeResp:
+                    def read(self):
+                        return b'{"status": "ok", "recovered": true}'
+                    def __enter__(self):
+                        return self
+                    def __exit__(self, *args):
+                        pass
+
+                return FakeResp()
+
+            with mock.patch("tongji_clipper.native_host.bridge.ensure_worker_running", side_effect=fake_ensure), \
+                 mock.patch("urllib.request.urlopen", side_effect=fake_urlopen):
+                result = send_worker_request("/jobs", method="GET")
+                self.assertEqual(result.get("status"), "ok")
+                self.assertTrue(result.get("recovered"))
+                self.assertEqual(call_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

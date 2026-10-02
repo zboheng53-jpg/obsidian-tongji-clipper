@@ -150,6 +150,9 @@ class WorkerRequestHandler(BaseHTTPRequestHandler):
         path = parsed.path.rstrip("/")
 
         if path == "/health":
+            if self.headers.get("Authorization"):
+                if not self._check_auth():
+                    return
             self._send_json(HTTPStatus.OK, {"status": "ok", "pid": os.getpid()})
             return
 
@@ -698,8 +701,21 @@ def run_server(
     try:
         server = WorkerServer((bind_host, port), db, token=auth_token, asr_engine=asr_engine)
     except OSError as e:
-        logger.error("Failed to bind worker to %s:%d: %s. Another worker instance may be active.", bind_host, port, e)
-        sys.exit(1)
+        if port != 0:
+            logger.warning(
+                "Failed to bind worker to %s:%d (%s). Falling back to an ephemeral port...",
+                bind_host,
+                port,
+                e,
+            )
+            try:
+                server = WorkerServer((bind_host, 0), db, token=auth_token, asr_engine=asr_engine)
+            except OSError as e2:
+                logger.error("Failed to bind worker to %s:0: %s", bind_host, e2)
+                sys.exit(1)
+        else:
+            logger.error("Failed to bind worker to %s:%d: %s. Another worker instance may be active.", bind_host, port, e)
+            sys.exit(1)
 
     actual_port = server.server_address[1]
     save_worker_info(port=actual_port, pid=os.getpid(), token=auth_token)

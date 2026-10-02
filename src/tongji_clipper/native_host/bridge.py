@@ -14,7 +14,12 @@ from typing import Any, Dict, Optional
 import urllib.error
 import urllib.request
 
-from tongji_clipper.config import get_app_dir, load_worker_info
+from tongji_clipper.config import (
+    get_app_dir,
+    get_worker_info_path,
+    load_worker_info,
+    remove_worker_info,
+)
 from tongji_clipper.native_host.protocol import read_message, send_message
 
 # Bridge logs strictly to stderr or log file, NEVER stdout!
@@ -27,23 +32,77 @@ log_handler.setFormatter(log_formatter)
 logger.addHandler(log_handler)
 
 
-def ping_worker(port: int) -> bool:
-    url = f"http://127.0.0.1:{port}/health"
+def check_worker_auth(port: int, token: str) -> bool:
+    """Verifies that the worker on port accepts token without error."""
+    if not token:
+        return False
+    url = f"http://127.0.0.1:{port}/jobs?limit=1"
+    headers = {"Authorization": f"Bearer {token}"}
     try:
-        req = urllib.request.Request(url, method="GET")
-        with urllib.request.urlopen(req, timeout=1.0) as resp:
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
             return resp.status == 200
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            logger.warning("Worker on port %d rejected auth token (401)", port)
+        return False
     except Exception:
         return False
+
+
+def ping_worker(
+    port: int,
+    token: Optional[str] = None,
+    expected_pid: Optional[int] = None,
+) -> bool:
+    """Checks worker health on localhost port, optionally validating PID and token."""
+    url = f"http://127.0.0.1:{port}/health"
+    try:
+        headers = {}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            if resp.status != 200:
+                return False
+            data = json.loads(resp.read().decode("utf-8"))
+            if expected_pid is not None and data.get("pid") is not None:
+                if data["pid"] != expected_pid:
+                    logger.warning(
+                        "Worker on port %d has PID %s, expected PID %s",
+                        port,
+                        data.get("pid"),
+                        expected_pid,
+                    )
+                    return False
+    except Exception:
+        return False
+
+    if token:
+        return check_worker_auth(port, token)
+    return True
 
 
 def ensure_worker_running(max_wait_sec: float = 6.0) -> Dict[str, Any]:
     """Ensures independent background worker is running. Auto-spawns if inactive."""
     info = load_worker_info()
-    if info and ping_worker(int(info["port"])):
-        return info
+    if info:
+        port = int(info.get("port", 0))
+        token = info.get("token", "")
+        pid = info.get("pid")
+        if ping_worker(port, token=token, expected_pid=pid):
+            return info
+        logger.warning(
+            "Worker info in %s is stale or rejected by worker on port %d. Cleaning up...",
+            get_worker_info_path(),
+            port,
+        )
+        remove_worker_info()
 
     logger.info("Worker not detected. Spawning new detached worker process...")
+
+    # Clear any stale worker info before spawning to avoid reading outdated tokens in poll loop
+    remove_worker_info()
 
     # Spawn worker detached on Windows
     creationflags = 0
@@ -64,11 +123,15 @@ def ensure_worker_running(max_wait_sec: float = 6.0) -> Dict[str, Any]:
     # Poll until ready
     start_time = time.time()
     while time.time() - start_time < max_wait_sec:
-        time.sleep(0.4)
+        time.sleep(0.3)
         info = load_worker_info()
-        if info and ping_worker(int(info["port"])):
-            logger.info("Worker spawned and ready on port %s", info["port"])
-            return info
+        if info:
+            port = int(info.get("port", 0))
+            token = info.get("token", "")
+            pid = info.get("pid")
+            if ping_worker(port, token=token, expected_pid=pid):
+                logger.info("Worker spawned and ready on port %s (PID %s)", port, pid)
+                return info
 
     raise RuntimeError("Failed to auto-start worker daemon within timeout")
 
@@ -77,6 +140,7 @@ def send_worker_request(
     endpoint: str,
     method: str = "GET",
     body: Optional[Dict[str, Any]] = None,
+    _retry_auth: bool = True,
 ) -> Dict[str, Any]:
     worker_info = ensure_worker_running()
     port = int(worker_info["port"])
@@ -97,6 +161,24 @@ def send_worker_request(
             resp_body = resp.read().decode("utf-8")
             return json.loads(resp_body)
     except urllib.error.HTTPError as e:
+        if e.code == 401 and _retry_auth:
+            logger.warning(
+                "Worker returned 401 Unauthorized for token. Attempting automatic recovery..."
+            )
+            # Check if token on disk was updated by another worker instance
+            refreshed = load_worker_info()
+            if refreshed and refreshed.get("token") != token:
+                logger.info("Detected new token on disk, retrying worker request...")
+                return send_worker_request(endpoint, method=method, body=body, _retry_auth=False)
+
+            # Otherwise remove stale worker.json and re-ensure worker
+            remove_worker_info()
+            try:
+                ensure_worker_running()
+                return send_worker_request(endpoint, method=method, body=body, _retry_auth=False)
+            except Exception as rec_err:
+                logger.error("Failed to auto-recover from 401 worker auth error: %s", rec_err)
+
         err_msg = e.read().decode("utf-8") if e.fp else str(e)
         logger.error("HTTP error from worker: %s", err_msg)
         return {"error": f"Worker error ({e.code}): {err_msg}"}

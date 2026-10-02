@@ -189,7 +189,11 @@ def cmd_worker(args: argparse.Namespace) -> None:
             print("Worker 未运行 (未找到 worker.json)")
             return
         from tongji_clipper.native_host.bridge import ping_worker
-        alive = ping_worker(int(info["port"]))
+        alive = ping_worker(
+            int(info["port"]),
+            token=info.get("token"),
+            expected_pid=info.get("pid"),
+        )
         if alive:
             print(f"Worker 运行中 (PID: {info.get('pid')}, Port: {info.get('port')})")
         else:
